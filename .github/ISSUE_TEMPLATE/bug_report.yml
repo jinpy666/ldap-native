@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a reproducible problem in ldap-native
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please include enough detail to reproduce the issue.
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      placeholder: Short description of the problem
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version, package version, OpenLDAP version, SASL/Kerberos details if relevant
+      placeholder: |
+        OS:
+        Node:
+        ldap-native:
+        OpenLDAP:
+        SASL/Kerberos:
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      placeholder: Steps, code snippet, config, and exact command used
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or stack traces
+      render: shell
