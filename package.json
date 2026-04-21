@@ -1,0 +1,102 @@
+{
+  "name": "ldap-native",
+  "version": "0.1.0",
+  "description": "ldapts-compatible Node.js client backed by OpenLDAP libldap with Kerberos/GSSAPI support",
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/index.cjs",
+      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.ts"
+    },
+    "./controls": {
+      "require": "./dist/lib/controls.cjs",
+      "import": "./dist/lib/controls.mjs",
+      "types": "./dist/index.d.ts"
+    },
+    "./filters": {
+      "require": "./dist/lib/filters.cjs",
+      "import": "./dist/lib/filters.mjs",
+      "types": "./dist/index.d.ts"
+    },
+    "./ber": {
+      "require": "./dist/lib/ber.cjs",
+      "import": "./dist/lib/ber.mjs",
+      "types": "./dist/compat-cjs/ber/index.d.ts"
+    },
+    "./dn": {
+      "require": "./dist/lib/dn.cjs",
+      "import": "./dist/lib/dn.mjs",
+      "types": "./dist/compat-cjs/dn/index.d.ts"
+    },
+    "./FilterParser": {
+      "require": "./dist/lib/FilterParser.cjs",
+      "import": "./dist/lib/FilterParser.mjs",
+      "types": "./dist/compat-cjs/FilterParser.d.ts"
+    },
+    "./PostalAddress": {
+      "require": "./dist/lib/PostalAddress.cjs",
+      "import": "./dist/lib/PostalAddress.mjs",
+      "types": "./dist/compat-cjs/PostalAddress.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "prebuilds",
+    "binding.gyp",
+    "lib",
+    "native",
+    "docs",
+    "examples",
+    ".github"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm run build:compat && node scripts/build-native.cjs && node scripts/build-dist.cjs && node scripts/create-prebuild.cjs",
+    "build:dist": "npm run build:compat && node scripts/build-dist.cjs",
+    "build:native": "node scripts/build-native.cjs",
+    "rebuild": "npm run build",
+    "test": "npm run build:compat && npm run build:dist && npm run test:unit && npm run test:imports && npm run test:upstream && npm run test:integration",
+    "test:unit": "node --test tests/unit/*.test.cjs",
+    "test:imports": "node scripts/run-import-tests.cjs",
+    "test:integration": "node --test tests/integration/*.test.cjs",
+    "smoke": "node examples/smoke-native.cjs",
+    "build:compat": "tsc -p tsconfig.compat.json",
+    "test:upstream": "node scripts/run-upstream-direct.cjs",
+    "ci": "npm run build:dist && npm run test:unit && npm run test:imports && npm run test:upstream",
+    "prepack": "npm run build:compat && npm run build:dist",
+    "test:integration:mockable": "node --test tests/integration/*.test.cjs",
+    "release:verify": "npm run build:dist && npm run test:unit && npm run test:imports && npm run test:upstream && npm pack --dry-run"
+  },
+  "keywords": [
+    "ldap",
+    "openldap",
+    "kerberos",
+    "gssapi",
+    "napi",
+    "ldapts"
+  ],
+  "module": "./dist/index.mjs",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jinpy666/ldap-native.git"
+  },
+  "homepage": "https://github.com/jinpy666/ldap-native#readme",
+  "bugs": {
+    "url": "https://github.com/jinpy666/ldap-native/issues"
+  },
+  "devDependencies": {
+    "node-gyp": "^11.2.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

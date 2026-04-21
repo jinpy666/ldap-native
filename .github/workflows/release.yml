@@ -1,0 +1,146 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  prebuild-linux-x64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y libldap2-dev libsasl2-dev
+      - run: npm install
+      - run: npm run build
+      - name: Stage linux-x64-gnu prebuild artifact
+        run: |
+          mkdir -p release-prebuilds/linux-x64-gnu
+          cp build/Release/ldap_native.node release-prebuilds/linux-x64-gnu/ldap_native.node
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuild-linux-x64-gnu
+          path: release-prebuilds/
+
+  prebuild-macos-x64:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: brew update
+      - run: brew install openldap cyrus-sasl
+      - run: echo "CPPFLAGS=-I$(brew --prefix openldap)/include" >> $GITHUB_ENV
+      - run: echo "LDFLAGS=-L$(brew --prefix openldap)/lib" >> $GITHUB_ENV
+      - run: npm install
+      - run: npm run build
+      - name: Stage macos-x64 prebuild artifact
+        run: |
+          mkdir -p release-prebuilds/darwin-x64
+          cp build/Release/ldap_native.node release-prebuilds/darwin-x64/ldap_native.node
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuild-darwin-x64
+          path: release-prebuilds/
+
+  prebuild-macos-arm64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: brew update
+      - run: brew install openldap cyrus-sasl
+      - run: echo "CPPFLAGS=-I$(brew --prefix openldap)/include" >> $GITHUB_ENV
+      - run: echo "LDFLAGS=-L$(brew --prefix openldap)/lib" >> $GITHUB_ENV
+      - run: npm install
+      - run: npm run build
+      - name: Stage darwin-arm64 prebuild artifact
+        run: |
+          mkdir -p release-prebuilds/darwin-arm64
+          cp build/Release/ldap_native.node release-prebuilds/darwin-arm64/ldap_native.node
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuild-darwin-arm64
+          path: release-prebuilds/
+
+  prebuild-windows-x64:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-nodejs
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-openldap
+            mingw-w64-ucrt-x86_64-cyrus-sasl
+            make
+      - run: npm install
+      - run: npm run build
+      - name: Stage win32-x64 prebuild artifact
+        run: |
+          mkdir -p release-prebuilds/win32-x64
+          cp build/Release/ldap_native.node release-prebuilds/win32-x64/ldap_native.node
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuild-win32-x64
+          path: release-prebuilds/
+
+  publish:
+    runs-on: ubuntu-latest
+    needs:
+      - prebuild-linux-x64
+      - prebuild-macos-x64
+      - prebuild-macos-arm64
+      - prebuild-windows-x64
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y libldap2-dev libsasl2-dev
+      - run: npm install
+      - uses: actions/download-artifact@v4
+        with:
+          path: prebuild-downloads
+      - name: Assemble prebuilds
+        run: |
+          rm -rf prebuilds
+          mkdir -p prebuilds
+          cp -R prebuild-downloads/prebuild-linux-x64-gnu/linux-x64-gnu prebuilds/
+          cp -R prebuild-downloads/prebuild-darwin-x64/darwin-x64 prebuilds/
+          cp -R prebuild-downloads/prebuild-darwin-arm64/darwin-arm64 prebuilds/
+          cp -R prebuild-downloads/prebuild-win32-x64/win32-x64 prebuilds/
+          find prebuilds -maxdepth 2 -type f -print
+      - run: npm run build:compat
+      - run: npm run build:dist
+      - run: npm run test:unit
+      - run: npm run test:imports
+      - run: npm run test:upstream
+      - run: npm publish --provenance --access public
+      - run: echo "Published ${GITHUB_REF_NAME} to npm with provenance." > RELEASE_NOTES.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.txt

@@ -1,0 +1,112 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  api-compat:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [20, 22]
+    runs-on: ${{ matrix.os }}
+    env:
+      LDAP_NATIVE_USE_MOCK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm install
+      - run: npm run build:dist
+      - run: npm run test:unit
+      - run: npm run test:imports
+      - run: npm run test:upstream
+
+  native-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y libldap2-dev libsasl2-dev
+      - run: npm install
+      - run: npm run build
+      - run: npm run smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-linux-node${{ matrix.node }}
+          path: |
+            build/Release/ldap_native.node
+            prebuilds/**
+
+  native-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-13
+            node: 22
+          - runner: macos-14
+            node: 22
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: brew update
+      - run: brew install openldap cyrus-sasl
+      - run: echo "CPPFLAGS=-I$(brew --prefix openldap)/include" >> $GITHUB_ENV
+      - run: echo "LDFLAGS=-L$(brew --prefix openldap)/lib" >> $GITHUB_ENV
+      - run: npm install
+      - run: npm run build
+      - run: npm run smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.runner }}
+          path: |
+            build/Release/ldap_native.node
+            prebuilds/**
+
+  native-windows-msys2:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-nodejs
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-openldap
+            mingw-w64-ucrt-x86_64-cyrus-sasl
+            make
+      - run: npm install
+      - run: npm run build
+      - run: npm run smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-windows-msys2
+          path: |
+            build/Release/ldap_native.node
+            prebuilds/**
