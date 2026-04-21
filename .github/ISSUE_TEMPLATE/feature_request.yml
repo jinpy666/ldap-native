@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest an enhancement for ldap-native
+labels: [enhancement]
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      placeholder: What would you like to add or improve?
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      placeholder: What migration, platform, API, or release problem does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      placeholder: Describe the API, behavior, workflow, or documentation change you want
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
