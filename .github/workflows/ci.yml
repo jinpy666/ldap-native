@@ -108,6 +108,11 @@ jobs:
           export INCLUDE_PATH="${MSYS2_PREFIX}/include"
           export LIBRARY_PATH="${MSYS2_PREFIX}/lib"
           npm install --ignore-scripts
+      - run: |
+          MSYS_INC=$(cygpath -w /ucrt64/include)
+          MSYS_LIB=$(cygpath -w /ucrt64/lib)
+          export INCLUDE="${MSYS_INC}${INCLUDE:+;$INCLUDE}"
+          export LIB="${MSYS_LIB}${LIB:+;$LIB}"
           npx node-gyp rebuild --nodedir=$(node -e "console.log(require('path').resolve(process.execPath,'..','..'))")
       - run: npm run smoke
       - uses: actions/upload-artifact@v4
