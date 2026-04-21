@@ -3,6 +3,12 @@
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 
+const [major] = process.versions.node.split('.').map(Number);
+if (major < 22) {
+  console.log('Skipping upstream tests: --experimental-strip-types requires Node >= 22');
+  process.exit(0);
+}
+
 const root = path.resolve(__dirname, '..');
 const tests = [
   'upstream/Controls.test.ts',
