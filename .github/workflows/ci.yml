@@ -101,23 +101,15 @@ jobs:
             mingw-w64-ucrt-x86_64-cyrus-sasl
             make
       - run: |
-          export MSYS2_PREFIX="/ucrt64"
-          export CFLAGS="-I${MSYS2_PREFIX}/include"
-          export CXXFLAGS="-I${MSYS2_PREFIX}/include -fexceptions -frtti"
-          export LDFLAGS="-L${MSYS2_PREFIX}/lib"
-          export INCLUDE_PATH="${MSYS2_PREFIX}/include"
-          export LIBRARY_PATH="${MSYS2_PREFIX}/lib"
+          export CFLAGS="-I/ucrt64/include"
+          export CXXFLAGS="-I/ucrt64/include -fexceptions -frtti"
+          export LDFLAGS="-L/ucrt64/lib"
           npm install --ignore-scripts
       - run: |
-          echo "=== Detection script output ==="
-          node scripts/detect-openldap-paths.cjs include
-          node scripts/detect-openldap-paths.cjs lib
-          echo "=== File exists check ==="
-          node -e "console.log(require('fs').existsSync('D:\\\\a\\\\_temp\\\\msys64\\\\ucrt64\\\\include'))"
-          echo "=== ls /ucrt64/include/ldap.h ==="
-          ls /ucrt64/include/ldap.h 2>&1 || true
-      - run: |
-          npx node-gyp rebuild --nodedir=$(node -e "console.log(require('path').resolve(process.execPath,'..','..'))") --verbose
+          export CFLAGS="-I/ucrt64/include"
+          export CXXFLAGS="-I/ucrt64/include -fexceptions -frtti"
+          export LDFLAGS="-L/ucrt64/lib"
+          npx node-gyp rebuild --nodedir=$(node -e "console.log(require('path').resolve(process.execPath,'..','..'))") --make=make
       - run: npm run smoke
       - uses: actions/upload-artifact@v4
         with:

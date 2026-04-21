@@ -18,21 +18,7 @@
             "libraries": ["-lldap", "-llber", "-lsasl2"],
             "library_dirs": [
               "<!@(node scripts/detect-openldap-paths.cjs lib)"
-            ],
-            "msvs_settings": {
-              "VCCLCompilerTool": {
-                "AdditionalIncludeDirectories": [
-                  "<!@(node scripts/detect-openldap-paths.cjs include)"
-                ],
-                "ExceptionHandling": "1",
-                "RuntimeTypeInfo": "true"
-              },
-              "VCLinkerTool": {
-                "AdditionalLibraryDirectories": [
-                  "<!@(node scripts/detect-openldap-paths.cjs lib)"
-                ]
-              }
-            }
+            ]
           },
           {
             "libraries": ["-lldap", "-llber", "-lsasl2"]
