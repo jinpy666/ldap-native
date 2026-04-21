@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { platformTriples } = require('../lib/native-loader.cjs');
+const { platformTriples } = require('../src/native-loader.cjs');
 
 const root = path.resolve(__dirname, '..');
 const builtAddon = path.join(root, 'build', 'Release', 'ldap_native.node');

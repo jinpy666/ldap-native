@@ -1,23 +1,77 @@
 'use strict';
 
-const { Client } = require('./lib/Client.cjs');
-const controls = require('./lib/controls.cjs');
-const filters = require('./lib/filters.cjs');
-const ber = require('./lib/ber.cjs');
-const dn = require('./lib/dn.cjs');
-const { Attribute } = require('./lib/Attribute.cjs');
-const { Change } = require('./lib/Change.cjs');
-const { PostalAddress } = require('./lib/PostalAddress.cjs');
-const { FilterParser } = require('./lib/FilterParser.cjs');
+const { Client } = require('./src/Client.cjs');
+const runtime = require('./src/runtime.cjs');
 
-module.exports = {
-  Client,
-  Attribute,
-  Change,
-  PostalAddress,
-  FilterParser,
-  ...controls,
-  ...filters,
-  ...ber,
-  ...dn,
-};
+exports.Client = Client;
+exports.Attribute = runtime.Attribute;
+exports.Change = runtime.Change;
+exports.PostalAddress = runtime.PostalAddress;
+exports.FilterParser = runtime.FilterParser;
+exports.Control = runtime.Control;
+exports.EntryChangeNotificationControl = runtime.EntryChangeNotificationControl;
+exports.PagedResultsControl = runtime.PagedResultsControl;
+exports.PersistentSearchControl = runtime.PersistentSearchControl;
+exports.ServerSideSortingRequestControl = runtime.ServerSideSortingRequestControl;
+exports.AndFilter = runtime.AndFilter;
+exports.ApproximateFilter = runtime.ApproximateFilter;
+exports.EqualityFilter = runtime.EqualityFilter;
+exports.ExtensibleFilter = runtime.ExtensibleFilter;
+exports.GreaterThanEqualsFilter = runtime.GreaterThanEqualsFilter;
+exports.LessThanEqualsFilter = runtime.LessThanEqualsFilter;
+exports.NotFilter = runtime.NotFilter;
+exports.OrFilter = runtime.OrFilter;
+exports.PresenceFilter = runtime.PresenceFilter;
+exports.SubstringFilter = runtime.SubstringFilter;
+exports.Ber = runtime.Ber;
+exports.BerReader = runtime.BerReader;
+exports.BerWriter = runtime.BerWriter;
+exports.InvalidAsn1Error = runtime.InvalidAsn1Error;
+exports.DN = runtime.DN;
+exports.RDN = runtime.RDN;
+exports.ProtocolOperation = runtime.ProtocolOperation;
+exports.MessageResponseStatus = runtime.MessageResponseStatus;
+exports.SearchFilter = runtime.SearchFilter;
+exports.StatusCodeParser = runtime.StatusCodeParser;
+exports.ResultCodeError = runtime.ResultCodeError;
+exports.MessageParserError = runtime.MessageParserError;
+exports.OperationsError = runtime.OperationsError;
+exports.ProtocolError = runtime.ProtocolError;
+exports.TimeLimitExceededError = runtime.TimeLimitExceededError;
+exports.SizeLimitExceededError = runtime.SizeLimitExceededError;
+exports.AuthMethodNotSupportedError = runtime.AuthMethodNotSupportedError;
+exports.StrongAuthRequiredError = runtime.StrongAuthRequiredError;
+exports.AdminLimitExceededError = runtime.AdminLimitExceededError;
+exports.UnavailableCriticalExtensionError = runtime.UnavailableCriticalExtensionError;
+exports.ConfidentialityRequiredError = runtime.ConfidentialityRequiredError;
+exports.SaslBindInProgressError = runtime.SaslBindInProgressError;
+exports.NoSuchAttributeError = runtime.NoSuchAttributeError;
+exports.UndefinedTypeError = runtime.UndefinedTypeError;
+exports.InappropriateMatchingError = runtime.InappropriateMatchingError;
+exports.ConstraintViolationError = runtime.ConstraintViolationError;
+exports.TypeOrValueExistsError = runtime.TypeOrValueExistsError;
+exports.InvalidSyntaxError = runtime.InvalidSyntaxError;
+exports.NoSuchObjectError = runtime.NoSuchObjectError;
+exports.AliasProblemError = runtime.AliasProblemError;
+exports.InvalidDNSyntaxError = runtime.InvalidDNSyntaxError;
+exports.IsLeafError = runtime.IsLeafError;
+exports.AliasDerefProblemError = runtime.AliasDerefProblemError;
+exports.InappropriateAuthError = runtime.InappropriateAuthError;
+exports.InvalidCredentialsError = runtime.InvalidCredentialsError;
+exports.InsufficientAccessError = runtime.InsufficientAccessError;
+exports.BusyError = runtime.BusyError;
+exports.UnavailableError = runtime.UnavailableError;
+exports.UnwillingToPerformError = runtime.UnwillingToPerformError;
+exports.LoopDetectError = runtime.LoopDetectError;
+exports.NamingViolationError = runtime.NamingViolationError;
+exports.ObjectClassViolationError = runtime.ObjectClassViolationError;
+exports.NotAllowedOnNonLeafError = runtime.NotAllowedOnNonLeafError;
+exports.NotAllowedOnRDNError = runtime.NotAllowedOnRDNError;
+exports.AlreadyExistsError = runtime.AlreadyExistsError;
+exports.NoObjectClassModsError = runtime.NoObjectClassModsError;
+exports.ResultsTooLargeError = runtime.ResultsTooLargeError;
+exports.AffectsMultipleDSAsError = runtime.AffectsMultipleDSAsError;
+exports.MoreResultsToReturnError = runtime.MoreResultsToReturnError;
+exports.TLSNotSupportedError = runtime.TLSNotSupportedError;
+exports.NoResultError = runtime.NoResultError;
+exports.UnknownStatusCodeError = runtime.UnknownStatusCodeError;

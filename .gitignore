@@ -2,5 +2,13 @@ node_modules/
 build/
 dist/
 prebuilds/
+/types/
 *.tgz
 npm-debug.log*
+.omc/
+
+# Docker TLS certs
+docker/openldap/tls/*.crt
+docker/openldap/tls/*.key
+docker/openldap/tls/*.pem
+docker/openldap/tls/*.srl

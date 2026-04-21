@@ -1,0 +1,46 @@
+dn: ou=users,dc=example,dc=com
+objectClass: organizationalUnit
+ou: users
+
+dn: ou=groups,dc=example,dc=com
+objectClass: organizationalUnit
+ou: groups
+
+dn: ou=services,dc=example,dc=com
+objectClass: organizationalUnit
+ou: services
+
+dn: uid=jdoe,ou=users,dc=example,dc=com
+objectClass: inetOrgPerson
+cn: John Doe
+sn: Doe
+uid: jdoe
+mail: jdoe@example.com
+userPassword: password123
+
+dn: uid=asmith,ou=users,dc=example,dc=com
+objectClass: inetOrgPerson
+cn: Alice Smith
+sn: Smith
+uid: asmith
+mail: asmith@example.com
+userPassword: secret456
+
+dn: uid=bjones,ou=users,dc=example,dc=com
+objectClass: inetOrgPerson
+cn: Bob Jones
+sn: Jones
+uid: bjones
+mail: bjones@example.com
+userPassword: pass789
+
+dn: cn=developers,ou=groups,dc=example,dc=com
+objectClass: groupOfNames
+cn: developers
+member: uid=jdoe,ou=users,dc=example,dc=com
+member: uid=asmith,ou=users,dc=example,dc=com
+
+dn: cn=admins,ou=groups,dc=example,dc=com
+objectClass: groupOfNames
+cn: admins
+member: uid=bjones,ou=users,dc=example,dc=com

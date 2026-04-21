@@ -1,1 +1,1 @@
-export * from './upstream-src/index';
+export * from './types/index';

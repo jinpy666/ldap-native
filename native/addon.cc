@@ -86,6 +86,8 @@ Napi::Value StartTLS(const Napi::CallbackInfo& info) {
       ldap_set_option(nullptr, LDAP_OPT_X_TLS_CACERTFILE, caFile.c_str());
     }
   }
+  int requireCert = LDAP_OPT_X_TLS_ALLOW;
+  ldap_set_option(nullptr, LDAP_OPT_X_TLS_REQUIRE_CERT, &requireCert);
   int rc = ldap_start_tls_s(handle->ld, nullptr, nullptr);
   if (rc != LDAP_SUCCESS) {
     throw MakeLdapError(env, rc, "ldap_start_tls_s failed");
@@ -226,7 +228,7 @@ Napi::Value Search(const Napi::CallbackInfo& info) {
       &result);
     ldap_control_free(pageCtrl);
     FreeAttributeArray(attrs);
-    if (rc != LDAP_SUCCESS && rc != LDAP_PARTIAL_RESULTS) {
+    if (rc != LDAP_SUCCESS && rc != LDAP_PARTIAL_RESULTS && rc != LDAP_SIZELIMIT_EXCEEDED) {
       if (result) ldap_msgfree(result);
       throw MakeLdapError(env, rc, "ldap_search_ext_s failed");
     }
@@ -244,7 +246,7 @@ Napi::Value Search(const Napi::CallbackInfo& info) {
       sizeLimit,
       &result);
     FreeAttributeArray(attrs);
-    if (rc != LDAP_SUCCESS && rc != LDAP_PARTIAL_RESULTS) {
+    if (rc != LDAP_SUCCESS && rc != LDAP_PARTIAL_RESULTS && rc != LDAP_SIZELIMIT_EXCEEDED) {
       if (result) ldap_msgfree(result);
       throw MakeLdapError(env, rc, "ldap_search_ext_s failed");
     }
@@ -283,8 +285,16 @@ Napi::Value Search(const Napi::CallbackInfo& info) {
   LDAPControl** serverCtrls = nullptr;
   if (ldap_parse_result(handle->ld, result, nullptr, nullptr, nullptr, nullptr, &serverCtrls, 0) == LDAP_SUCCESS && serverCtrls != nullptr) {
     struct berval cookie{};
-    unsigned long total = 0;
-    if (ldap_parse_page_control(handle->ld, serverCtrls, &total, &cookie) == LDAP_SUCCESS) {
+    ber_int_t total = 0;
+    LDAPControl* pagedCtrl = nullptr;
+    for (int i = 0; serverCtrls[i] != nullptr; i++) {
+      if (serverCtrls[i]->ldctl_oid != nullptr &&
+          std::string(serverCtrls[i]->ldctl_oid) == "1.2.840.113556.1.4.319") {
+        pagedCtrl = serverCtrls[i];
+        break;
+      }
+    }
+    if (pagedCtrl && ldap_parse_pageresponse_control(handle->ld, pagedCtrl, &total, &cookie) == LDAP_SUCCESS) {
       if (cookie.bv_val != nullptr && cookie.bv_len > 0) {
         output.Set("cookie", Napi::Buffer<char>::Copy(env, cookie.bv_val, cookie.bv_len));
       }
@@ -457,7 +467,24 @@ Napi::Value ModifyDN(const Napi::CallbackInfo& info) {
   auto payload = info[1].As<Napi::Object>();
   std::string dn = payload.Get("dn").As<Napi::String>().Utf8Value();
   std::string newDN = payload.Get("newDN").As<Napi::String>().Utf8Value();
-  int rc = ldap_rename_s(handle->ld, dn.c_str(), newDN.c_str(), nullptr, 1, nullptr, nullptr);
+
+  // Extract RDN (everything before the first comma) from newDN
+  std::string newRDN = newDN;
+  std::string newParent;
+  auto comma = newDN.find(',');
+  if (comma != std::string::npos) {
+    newRDN = newDN.substr(0, comma);
+    newParent = newDN.substr(comma + 1);
+  }
+
+  // Check if the parent portion matches the original DN's parent
+  // If same parent, pass nullptr for newParent (rename in place)
+  auto dnComma = dn.find(',');
+  bool sameParent = (dnComma != std::string::npos) &&
+    (dn.substr(dnComma + 1) == newParent);
+
+  int rc = ldap_rename_s(handle->ld, dn.c_str(), newRDN.c_str(),
+    sameParent ? nullptr : newParent.c_str(), 1, nullptr, nullptr);
   if (rc != LDAP_SUCCESS) {
     throw MakeLdapError(env, rc, "ldap_rename_s failed");
   }

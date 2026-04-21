@@ -135,11 +135,12 @@ jobs:
           cp -R prebuild-downloads/prebuild-win32-x64/win32-x64 prebuilds/
           find prebuilds -maxdepth 2 -type f -print
       - run: npm run build:compat
-      - run: npm run build:dist
       - run: npm run test:unit
       - run: npm run test:imports
       - run: npm run test:upstream
       - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - run: echo "Published ${GITHUB_REF_NAME} to npm with provenance." > RELEASE_NOTES.txt
       - uses: softprops/action-gh-release@v2
         with:

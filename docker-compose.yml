@@ -1,0 +1,26 @@
+services:
+  openldap:
+    image: osixia/openldap:1.5.0
+    ports:
+      - "3890:389"
+      - "6360:636"
+    environment:
+      LDAP_ORGANISATION: "Test Corp"
+      LDAP_DOMAIN: "example.com"
+      LDAP_ADMIN_PASSWORD: "admin"
+      LDAP_CONFIG_PASSWORD: "config"
+      LDAP_TLS: "true"
+      LDAP_TLS_CRT_FILENAME: "ldap.crt"
+      LDAP_TLS_KEY_FILENAME: "ldap.key"
+      LDAP_TLS_CA_CRT_FILENAME: "ca.crt"
+      LDAP_TLS_VERIFY_CLIENT: "never"
+    volumes:
+      - ./docker/openldap/seed.ldif:/container/service/slapd/assets/config/bootstrap/ldif/50-seed.ldif
+      - ./docker/openldap/tls:/container/service/slapd/assets/certs
+    command: "--copy-service --loglevel info"
+    healthcheck:
+      test: ["CMD", "ldapsearch", "-x", "-H", "ldap://localhost:389", "-D", "cn=admin,dc=example,dc=com", "-w", "admin", "-b", "dc=example,dc=com", "(objectClass=*)", "dn"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
