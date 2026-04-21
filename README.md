@@ -1,14 +1,21 @@
 # ldap-native
 
-A `ldapts`-compatible Node.js package backed by OpenLDAP `libldap`, with SASL and Kerberos/GSSAPI entry points.
+A `ldapts`-compatible Node.js LDAP client backed by OpenLDAP `libldap`, with SASL and Kerberos/GSSAPI entry points.
 
-This repository is a practical starter implementation for a native npm package that:
+`ldap-native` exists for teams that want to keep the familiar `ldapts` package surface while replacing the original socket/BER transport with a native addon. This repository therefore combines three concerns in one place:
 
-- keeps the familiar `ldapts` `Client` API shape,
-- replaces the TypeScript socket/BER transport with `libldap`,
-- adds `bind('GSSAPI')` support for Kerberos,
-- stages add-ons for cross-platform prebuild distribution,
-- executes a substantial part of the upstream `ldapts` test corpus directly.
+1. compatibility-oriented package exports for `ldapts` consumers
+2. a Node-API addon that calls OpenLDAP directly
+3. CI/release automation for cross-platform source builds and staged prebuild distribution
+
+## What this package is trying to do
+
+- keep the familiar `ldapts` `Client` API shape
+- replace the TypeScript socket/BER transport with OpenLDAP `libldap`
+- add `bind('GSSAPI')` support for Kerberos-enabled environments
+- preserve common helper exports for controls, filters, BER, DN, and postal address helpers
+- validate migration-relevant behavior against upstream `ldapts` tests
+- prepare the package for multi-platform prebuild publication
 
 ## Current status
 
@@ -39,6 +46,16 @@ Compatibility evidence now includes:
 
 See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the exact boundary between direct upstream execution and client parity coverage.
 
+## Important limits and non-goals
+
+This repository targets **migration-friendly compatibility with the public `ldapts` API**, not a byte-for-byte recreation of the original internal transport layer.
+
+Current boundaries to keep in mind:
+
+- generic `Control` to native `LDAPControl` encoding is still partial
+- some parity work intentionally excludes private socket/BER pipeline assertions from upstream `Client.test.ts`
+- the current native addon uses synchronous `libldap` calls behind Promise-based JavaScript methods; production hardening should move blocking LDAP work into async workers
+
 ## Install
 
 ### Source build
@@ -59,7 +76,7 @@ npm run build
 npm test
 ```
 
-The included build script points `node-gyp` at the current Node installation so it can work in offline or air-gapped environments where Node headers are already present locally.
+The included build helper points `node-gyp` at the current Node installation so it can work in offline or air-gapped environments where Node headers are already present locally.
 
 ### Windows source build
 
@@ -74,8 +91,8 @@ The repository includes an MSYS2/UCRT64-based workflow. For local Windows source
 ## Build outputs
 
 - `build/Release/ldap_native.node` — native addon
+- `compat-cjs/` — generated compatibility/type bridge output from `npm run build:compat`
 - `dist/` — CJS/ESM/type outputs aligned with `ldapts` package imports
-- `dist/compat-cjs/` — generated compatibility modules reused by dist wrappers
 - `prebuilds/<platform-triple>/ldap_native.node` — staged prebuild layout
 
 ## Usage
@@ -122,6 +139,45 @@ console.log(Buffer.isBuffer(whoami.value) ? whoami.value.toString('utf8') : whoa
 await client.unbind();
 ```
 
+## Repository layout
+
+For a fuller annotated tree and contributor guide, see [docs/REPOSITORY_LAYOUT.md](docs/REPOSITORY_LAYOUT.md).
+
+```text
+.
+├─ .github/workflows/        CI and release automation
+├─ docs/                     architecture, build, compatibility, testing, release notes
+├─ examples/                 runnable smoke / usage examples
+├─ lib/                      JavaScript runtime layer, client wrapper, loader, mock backend
+├─ native/                   Node-API addon backed by OpenLDAP libldap
+├─ scripts/                  build, packaging, and upstream-test runners
+├─ tests/                    unit, parity, and integration tests
+├─ upstream/                 vendored upstream ldapts tests executed directly
+├─ upstream-src/             vendored upstream source reused for compatibility helpers
+├─ binding.gyp               native addon build definition
+├─ index.cjs|mjs|d.ts        public package entrypoints
+├─ package.json              exports, scripts, and publish metadata
+└─ tsconfig.compat.json      compatibility/type generation config
+
+Generated during build or release:
+- compat-cjs/
+- build/
+- dist/
+- prebuilds/
+```
+
+## Build and packaging flow
+
+```text
+native/addon.cc + binding.gyp --(node-gyp)------------------> build/Release/ldap_native.node
+tsconfig.compat.json ---------(tsc)-------------------------> compat-cjs/
+root entrypoints + lib/ + compat-cjs/ --(build-dist)-------> dist/
+build/Release/ldap_native.node --(create-prebuild)---------> prebuilds/<platform-triple>/
+release workflow artifacts ---------------------------------> assembled prebuilds/ for npm publish
+```
+
+When changing behavior, prefer editing the source-of-truth layers (`native/`, `lib/`, scripts, tests, docs) instead of editing generated outputs by hand.
+
 ## Test matrix
 
 Run package tests:
@@ -146,18 +202,11 @@ LDAP_BASE_DN='dc=example,dc=com' \
 npm run test:integration
 ```
 
-## Repository layout
+For API-compatibility CI, the repository also supports `LDAP_NATIVE_USE_MOCK=1`, which switches the runtime to the in-repo mock backend instead of a compiled addon.
 
-- `native/` — N-API addon source using OpenLDAP `libldap`
-- `lib/` — CommonJS runtime implementation and native loader
-- `src/` / `compat-cjs/` — compatibility exports and generated type bridge files
-- `upstream/` — vendored upstream `ldapts` tests used for direct execution
-- `upstream-src/` — vendored upstream `ldapts` source files reused for compatible public helpers
-- `tests/` — package, import, parity, and integration tests
-- `docs/` — architecture, build, compatibility, Kerberos, and release docs
+## Documentation map
 
-## Documentation
-
+- [Repository layout](docs/REPOSITORY_LAYOUT.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Build notes](docs/BUILD.md)
 - [Compatibility matrix](docs/COMPATIBILITY.md)
@@ -165,6 +214,13 @@ npm run test:integration
 - [Testing](docs/TESTING.md)
 - [Prebuild strategy](docs/PREBUILDS.md)
 - [npm publish](docs/NPM_PUBLISH.md)
+
+A useful reading order for new contributors is:
+
+1. this README
+2. `docs/REPOSITORY_LAYOUT.md`
+3. `docs/ARCHITECTURE.md`
+4. `docs/BUILD.md` and `docs/TESTING.md`
 
 ## Automated CI and npm release
 
