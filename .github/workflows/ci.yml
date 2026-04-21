@@ -109,11 +109,15 @@ jobs:
           export LIBRARY_PATH="${MSYS2_PREFIX}/lib"
           npm install --ignore-scripts
       - run: |
-          MSYS_INC=$(cygpath -w /ucrt64/include)
-          MSYS_LIB=$(cygpath -w /ucrt64/lib)
-          export INCLUDE="${MSYS_INC}${INCLUDE:+;$INCLUDE}"
-          export LIB="${MSYS_LIB}${LIB:+;$LIB}"
-          npx node-gyp rebuild --nodedir=$(node -e "console.log(require('path').resolve(process.execPath,'..','..'))")
+          echo "=== Detection script output ==="
+          node scripts/detect-openldap-paths.cjs include
+          node scripts/detect-openldap-paths.cjs lib
+          echo "=== File exists check ==="
+          node -e "console.log(require('fs').existsSync('D:\\\\a\\\\_temp\\\\msys64\\\\ucrt64\\\\include'))"
+          echo "=== ls /ucrt64/include/ldap.h ==="
+          ls /ucrt64/include/ldap.h 2>&1 || true
+      - run: |
+          npx node-gyp rebuild --nodedir=$(node -e "console.log(require('path').resolve(process.execPath,'..','..'))") --verbose
       - run: npm run smoke
       - uses: actions/upload-artifact@v4
         with:
