@@ -68,6 +68,7 @@
     "url": "https://github.com/jinpy666/ldap-native/issues"
   },
   "devDependencies": {
+    "@types/node": "^25.6.0",
     "node-gyp": "^11.2.0",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
