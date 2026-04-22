@@ -27,5 +27,6 @@ if (process.platform === 'darwin') {
     }
   } catch {}
 }
-// On Linux and Windows, system paths are found automatically by the compiler.
-// msys2 UCRT64 headers conflict with MSVC, so we don't add them here.
+// On Linux, system paths are found automatically by the compiler.
+// On Windows, the addon links against the system Wldap32 SDK via MSVC, so no
+// OpenLDAP include/lib discovery is needed here.

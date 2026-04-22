@@ -7,18 +7,11 @@ const execPath = process.execPath;
 const nodeGypCli = require.resolve('node-gyp/bin/node-gyp.js');
 const nodedir = process.env.npm_config_nodedir || path.resolve(execPath, '..', '..');
 const env = { ...process.env };
-const isMsys2Windows = process.platform === 'win32' && Boolean(process.env.MSYSTEM);
-if (isMsys2Windows) {
-  env.CC = env.CC || 'gcc';
-  env.CXX = env.CXX || 'g++';
-  env.MAKE = env.MAKE || 'make';
-  env.MSYS2_ARG_CONV_EXCL = env.MSYS2_ARG_CONV_EXCL || '*';
-  delete env.npm_config_nodedir;
-}
 // node-addon-api requires C++ exceptions and RTTI, but Node's common.gypi
 // adds -fno-exceptions -fno-rtti which override binding.gyp's cflags_cc!.
-// Force them back via CXXFLAGS on non-Windows platforms and MSYS2/make builds.
-if (process.platform !== 'win32' || isMsys2Windows) {
+// Force them back via CXXFLAGS on non-Windows platforms where common.gypi uses
+// GCC/Clang-style flags. MSVC gets the equivalent switches from binding.gyp.
+if (process.platform !== 'win32') {
   env.CXXFLAGS = [env.CXXFLAGS, '-fexceptions', '-frtti'].filter(Boolean).join(' ');
 }
 const cwd = path.resolve(__dirname, '..');
@@ -38,25 +31,10 @@ function runNodeGyp(args) {
   return result;
 }
 
-if (isMsys2Windows) {
-  const steps = [
-    ['clean'],
-    // Let node-gyp read MSYS2's process.config so it keeps the MinGW-friendly
-    // import library path (for example libnode.dll.a) instead of synthesizing
-    // an MSVC-style node.lib path from --nodedir.
-    ['configure', '--force-process-config', '--', '-f', 'make'],
-    ['build'],
-  ];
-
-  for (const stepArgs of steps) {
-    const result = runNodeGyp(stepArgs);
-    if ((result.status ?? 1) !== 0) {
-      process.exit(result.status ?? 1);
-    }
-  }
-
-  process.exit(0);
+const args = ['rebuild'];
+if (process.platform !== 'win32') {
+  args.push(`--nodedir=${nodedir}`);
 }
 
-const result = runNodeGyp(['rebuild', `--nodedir=${nodedir}`]);
+const result = runNodeGyp(args);
 process.exit(result.status ?? 1);

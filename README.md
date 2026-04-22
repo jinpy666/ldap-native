@@ -36,7 +36,7 @@ Implemented now:
 - root exports for controls, filters, BER helpers, DN helpers, and postal address helpers
 - CommonJS and ESM import surface covered by import tests
 - a native loader that resolves local builds and staged `prebuilds/`
-- a GitHub Actions matrix for API compatibility on Linux/macOS/Windows plus native build jobs for Linux/macOS and an MSYS2-based Windows native job
+- a GitHub Actions matrix for API compatibility on Linux/macOS/Windows plus native build jobs for Linux/macOS and MSVC-based Windows builds
 
 Compatibility evidence now includes:
 
@@ -57,6 +57,35 @@ Current boundaries to keep in mind:
 - the current native addon uses synchronous `libldap` calls behind Promise-based JavaScript methods; production hardening should move blocking LDAP work into async workers
 
 ## Install
+
+`ldap-native` does not need an OpenLDAP server process on the local machine. Linux and macOS source builds rely on OpenLDAP client libraries (`libldap`, `liblber`) and Cyrus SASL; Windows source builds use the system `Wldap32` SDK via MSVC.
+
+The npm install flow now behaves as follows:
+
+1. Try a packaged prebuild for the current platform.
+2. If no compatible prebuild is present, fall back to a local source build.
+3. If native dependencies are missing, print platform-specific install commands.
+
+The package never runs `apt`, `dnf`, `brew`, or `apk` for you.
+
+### Common system dependencies
+
+Install the native prerequisites before `npm install` if you expect to build from source, or if a packaged prebuild fails to load because runtime libraries are missing.
+
+| Platform | Typical packages |
+| --- | --- |
+| Debian / Ubuntu | `apt-get update && apt-get install -y libldap-dev libsasl2-dev python3 make g++` |
+| Fedora / RHEL / CentOS | `dnf install -y openldap-devel cyrus-sasl-devel python3 make gcc-c++` |
+| Alpine | `apk add --no-cache openldap-dev cyrus-sasl-dev build-base python3` |
+| macOS | `brew install openldap cyrus-sasl` |
+| Windows (MSVC) | `npm install` |
+
+On macOS, Homebrew `openldap` is keg-only, so source builds may also need:
+
+```bash
+export CPPFLAGS="-I$(brew --prefix openldap)/include"
+export LDFLAGS="-L$(brew --prefix openldap)/lib"
+```
 
 ### Source build
 
@@ -80,13 +109,27 @@ The included build helper points `node-gyp` at the current Node installation so 
 
 ### Windows source build
 
-The repository includes an MSYS2/UCRT64-based workflow. For local Windows source builds, mirror that environment and install:
+The repository now uses the standard `node-gyp` + MSVC toolchain on `windows-latest`. For local Windows source builds:
 
-- `mingw-w64-ucrt-x86_64-nodejs`
-- `mingw-w64-ucrt-x86_64-openldap`
-- `mingw-w64-ucrt-x86_64-cyrus-sasl`
-- `mingw-w64-ucrt-x86_64-gcc`
-- `mingw-w64-ucrt-x86_64-python`
+- use Developer PowerShell for Visual Studio 2022, or install the Visual Studio Build Tools workload that provides `cl.exe`, `MSBuild`, and the Windows SDK
+- use Node.js 20+ and Python 3 on `PATH`
+- run `npm install`
+
+The Windows addon links against the system `Wldap32` SDK, so it does not require separate OpenLDAP or Cyrus SASL development packages.
+
+### GSSAPI / Kerberos environments
+
+If you use `bind('GSSAPI')`, the base `libsasl2` library is not enough on its own. You also need:
+
+- a SASL GSSAPI plugin for your distribution
+- Kerberos client libraries and configuration
+- valid credentials, keytabs, or ticket cache for the target environment
+
+Typical extra packages include:
+
+- Debian / Ubuntu: `libsasl2-modules-gssapi-mit`, `krb5-user`
+- Fedora / RHEL / CentOS: `cyrus-sasl-gssapi`, `krb5-workstation`
+- Alpine: `cyrus-sasl-gssapiv2`, `heimdal`
 
 ## Build outputs
 

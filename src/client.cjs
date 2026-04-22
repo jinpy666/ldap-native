@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { URL } = require('node:url');
 const { loadNative } = require('./native-loader.cjs');
 const controlsModule = require('./runtime.cjs');
 const { StatusCodeParser } = require('./runtime.cjs');
@@ -89,6 +90,36 @@ function toNativeSearchOptions(options) {
         }
       : null,
   };
+}
+
+function parseWindowsLdapUrl(url) {
+  const parsed = new URL(url);
+  const protocol = parsed.protocol.toLowerCase();
+  if (protocol !== 'ldap:' && protocol !== 'ldaps:') {
+    throw new TypeError(`Windows native backend only supports ldap:// and ldaps:// URLs, received: ${url}`);
+  }
+
+  return {
+    host: parsed.hostname,
+    port: parsed.port ? Number(parsed.port) : (protocol === 'ldaps:' ? 636 : 389),
+    secure: protocol === 'ldaps:',
+  };
+}
+
+function buildNativeConnectOptions(options, tempPaths) {
+  const nativeOptions = {
+    url: options.url,
+    timeout: typeof options.timeout === 'number' ? options.timeout : undefined,
+    connectTimeout: typeof options.connectTimeout === 'number' ? options.connectTimeout : undefined,
+    tlsOptions: normalizeTlsOptions(options.tlsOptions, tempPaths),
+    strictDN: options.strictDN ?? true,
+  };
+
+  if (process.platform === 'win32') {
+    Object.assign(nativeOptions, parseWindowsLdapUrl(options.url));
+  }
+
+  return nativeOptions;
 }
 
 function makeTempFile(prefix, filename, contents) {
@@ -185,13 +216,7 @@ class Client {
     this.tempPaths = new Set();
 
     try {
-      this.nativeHandle = native.connect({
-        url: options.url,
-        timeout: typeof options.timeout === 'number' ? options.timeout : undefined,
-        connectTimeout: typeof options.connectTimeout === 'number' ? options.connectTimeout : undefined,
-        tlsOptions: normalizeTlsOptions(options.tlsOptions, this.tempPaths),
-        strictDN: options.strictDN ?? true,
-      });
+      this.nativeHandle = native.connect(buildNativeConnectOptions(options, this.tempPaths));
     } catch (err) {
       cleanupTempPaths(this.tempPaths);
       throw err;

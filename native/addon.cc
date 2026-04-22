@@ -1,5 +1,11 @@
 #include <napi.h>
+
+#ifdef _WIN32
+#include <wincrypt.h>
+#include <winldap.h>
+#else
 #include <ldap.h>
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -28,6 +34,51 @@ Napi::Error MakeLdapError(Napi::Env env, int code, const std::string& msg) {
 Napi::Error MakeOptionError(Napi::Env env, const std::string& msg) {
   return MakeLdapError(env, LDAP_LOCAL_ERROR, msg);
 }
+
+#ifdef _WIN32
+
+using VerifyServerCertCallback = BOOLEAN (CALLBACK*)(PLDAP, PCCERT_CONTEXT*);
+
+BOOLEAN CALLBACK AllowAnyServerCertificate(PLDAP /* connection */, PCCERT_CONTEXT* serverCert) {
+  if (serverCert != nullptr && *serverCert != nullptr) {
+    CertFreeCertificateContext(*serverCert);
+    *serverCert = nullptr;
+  }
+  return TRUE;
+}
+
+bool SetLdapOption(LDAP* ld, int option, const void* invalue) {
+  return ldap_set_option(ld, option, invalue) == LDAP_SUCCESS;
+}
+
+const char* PagedResultsControlOid() {
+  return LDAP_PAGED_RESULT_OID_STRING;
+}
+
+#else
+
+bool SetLdapOption(LDAP* ld, int option, const void* invalue) {
+  bool applied = false;
+
+  // OpenLDAP TLS options are not consistently scoped across client library
+  // builds. Some libldap variants only honor the global option, while others
+  // honor the per-handle value. Apply both and accept either success path.
+  if (ldap_set_option(nullptr, option, invalue) == LDAP_OPT_SUCCESS) {
+    applied = true;
+  }
+
+  if (ld != nullptr && ldap_set_option(ld, option, invalue) == LDAP_OPT_SUCCESS) {
+    applied = true;
+  }
+
+  return applied;
+}
+
+const char* PagedResultsControlOid() {
+  return LDAP_CONTROL_PAGEDRESULTS;
+}
+
+#endif
 
 std::shared_ptr<Handle> GetHandle(const Napi::CallbackInfo& info) {
   auto env = info.Env();
@@ -146,6 +197,8 @@ void CollectEntryAttributes(
   }
 }
 
+#ifndef _WIN32
+
 int MapTlsProtocolMin(const std::string& minVersion) {
   if (minVersion == "TLSv1") return LDAP_OPT_X_TLS_PROTOCOL_TLS1_0;
   if (minVersion == "TLSv1.0") return LDAP_OPT_X_TLS_PROTOCOL_TLS1_0;
@@ -154,6 +207,8 @@ int MapTlsProtocolMin(const std::string& minVersion) {
   if (minVersion == "TLSv1.3") return LDAP_OPT_X_TLS_PROTOCOL_TLS1_3;
   return 0;
 }
+
+#endif
 
 int MapDerefAliases(const std::string& derefAliases) {
   if (derefAliases == "always") return LDAP_DEREF_ALWAYS;
@@ -206,28 +261,32 @@ void SetObjectPropertyString(
   object.Set(property, Napi::String::New(env, value));
 }
 
-bool SetLdapOptionOnGlobalAndHandle(LDAP* ld, int option, const void* invalue) {
-  bool applied = false;
-
-  // OpenLDAP TLS options are not consistently scoped across client library
-  // builds. Some libldap variants only honor the global option, while others
-  // honor the per-handle value. Apply both and accept either success path.
-  if (ldap_set_option(nullptr, option, invalue) == LDAP_OPT_SUCCESS) {
-    applied = true;
-  }
-
-  if (ld != nullptr && ldap_set_option(ld, option, invalue) == LDAP_OPT_SUCCESS) {
-    applied = true;
-  }
-
-  return applied;
-}
-
 void ApplyTlsOptions(Napi::Env env, LDAP* ld, const Napi::Object& options) {
+#ifdef _WIN32
+  auto throwUnsupported = [&](const char* key, const char* description) {
+    if (!options.Has(key)) return;
+    auto value = options.Get(key);
+    if (value.IsUndefined() || value.IsNull()) return;
+    throw MakeOptionError(env, std::string(description) + " is not supported by the Windows Wldap32 backend");
+  };
+
+  throwUnsupported("caFile", "tlsOptions.caFile");
+  throwUnsupported("certFile", "tlsOptions.certFile");
+  throwUnsupported("keyFile", "tlsOptions.keyFile");
+  throwUnsupported("ciphers", "tlsOptions.ciphers");
+  throwUnsupported("minVersion", "tlsOptions.minVersion");
+
+  if (!ReadBoolean(options, "rejectUnauthorized", true)) {
+    VerifyServerCertCallback callback = &AllowAnyServerCertificate;
+    if (!SetLdapOption(ld, LDAP_OPT_SERVER_CERTIFICATE, reinterpret_cast<const void*>(&callback))) {
+      throw MakeOptionError(env, "ldap_set_option failed for LDAP_OPT_SERVER_CERTIFICATE");
+    }
+  }
+#else
   auto setStringOption = [&](const char* key, int option, const char* name) {
     if (!options.Has(key) || !options.Get(key).IsString()) return;
     std::string value = options.Get(key).As<Napi::String>().Utf8Value();
-    if (!SetLdapOptionOnGlobalAndHandle(ld, option, value.c_str())) {
+    if (!SetLdapOption(ld, option, value.c_str())) {
       throw MakeOptionError(env, std::string("ldap_set_option failed for ") + name);
     }
   };
@@ -240,22 +299,23 @@ void ApplyTlsOptions(Napi::Env env, LDAP* ld, const Napi::Object& options) {
   int requireCert = ReadBoolean(options, "rejectUnauthorized", true)
     ? LDAP_OPT_X_TLS_HARD
     : LDAP_OPT_X_TLS_NEVER;
-  if (!SetLdapOptionOnGlobalAndHandle(ld, LDAP_OPT_X_TLS_REQUIRE_CERT, &requireCert)) {
+  if (!SetLdapOption(ld, LDAP_OPT_X_TLS_REQUIRE_CERT, &requireCert)) {
     throw MakeOptionError(env, "ldap_set_option failed for LDAP_OPT_X_TLS_REQUIRE_CERT");
   }
 
   if (options.Has("minVersion") && options.Get("minVersion").IsString()) {
     int protocolMin = MapTlsProtocolMin(options.Get("minVersion").As<Napi::String>().Utf8Value());
     if (protocolMin != 0 &&
-        !SetLdapOptionOnGlobalAndHandle(ld, LDAP_OPT_X_TLS_PROTOCOL_MIN, &protocolMin)) {
+        !SetLdapOption(ld, LDAP_OPT_X_TLS_PROTOCOL_MIN, &protocolMin)) {
       throw MakeOptionError(env, "ldap_set_option failed for LDAP_OPT_X_TLS_PROTOCOL_MIN");
     }
   }
 
   int newContext = 0;
-  if (!SetLdapOptionOnGlobalAndHandle(ld, LDAP_OPT_X_TLS_NEWCTX, &newContext)) {
+  if (!SetLdapOption(ld, LDAP_OPT_X_TLS_NEWCTX, &newContext)) {
     throw MakeOptionError(env, "ldap_set_option failed for LDAP_OPT_X_TLS_NEWCTX");
   }
+#endif
 }
 
 std::vector<char*> BuildAttributeArray(const Napi::Value& value) {
@@ -289,15 +349,36 @@ Napi::Value Connect(const Napi::CallbackInfo& info) {
   std::string url = options.Get("url").As<Napi::String>().Utf8Value();
 
   LDAP* ld = nullptr;
+#ifdef _WIN32
+  std::string host = ReadUtf8String(options, "host");
+  ULONG port = options.Has("port") && options.Get("port").IsNumber()
+    ? static_cast<ULONG>(options.Get("port").As<Napi::Number>().Uint32Value())
+    : 389;
+  bool secure = ReadBoolean(options, "secure", false);
+
+  if (secure) {
+    ld = ldap_sslinit(host.empty() ? nullptr : const_cast<char*>(host.c_str()), port, 1);
+    if (ld == nullptr) {
+      throw MakeOptionError(env, "ldap_sslinit failed");
+    }
+  } else {
+    ld = ldap_init(host.empty() ? nullptr : const_cast<char*>(host.c_str()), port);
+    if (ld == nullptr) {
+      throw MakeOptionError(env, "ldap_init failed");
+    }
+  }
+#else
   int rc = ldap_initialize(&ld, url.c_str());
   if (rc != LDAP_SUCCESS || ld == nullptr) {
     throw MakeLdapError(env, rc, "ldap_initialize failed");
   }
+#endif
 
   int version = LDAP_VERSION3;
   ldap_set_option(ld, LDAP_OPT_PROTOCOL_VERSION, &version);
 
   if (options.Has("timeout") && options.Get("timeout").IsNumber()) {
+#ifdef LDAP_OPT_TIMEOUT
     struct timeval tv{};
     auto timeout = options.Get("timeout").As<Napi::Number>().Int64Value();
     if (timeout > 0) {
@@ -305,9 +386,11 @@ Napi::Value Connect(const Napi::CallbackInfo& info) {
       tv.tv_usec = static_cast<long>((timeout % 1000) * 1000);
       ldap_set_option(ld, LDAP_OPT_TIMEOUT, &tv);
     }
+#endif
   }
 
   if (options.Has("connectTimeout") && options.Get("connectTimeout").IsNumber()) {
+#ifdef LDAP_OPT_NETWORK_TIMEOUT
     struct timeval tv{};
     auto timeout = options.Get("connectTimeout").As<Napi::Number>().Int64Value();
     if (timeout > 0) {
@@ -315,6 +398,7 @@ Napi::Value Connect(const Napi::CallbackInfo& info) {
       tv.tv_usec = static_cast<long>((timeout % 1000) * 1000);
       ldap_set_option(ld, LDAP_OPT_NETWORK_TIMEOUT, &tv);
     }
+#endif
   }
 
   if (options.Has("tlsOptions") && options.Get("tlsOptions").IsObject()) {
@@ -414,7 +498,11 @@ Napi::Value Search(const Napi::CallbackInfo& info) {
   int attrsOnly = ReadBoolean(options, "returnAttributeValues", true) ? 0 : 1;
   std::vector<std::string> explicitBufferAttributes = ReadStringArray(options.Get("explicitBufferAttributes"));
 
+#ifdef _WIN32
+  if (ldap_set_option(handle->ld, LDAP_OPT_DEREF, &derefAliases) != LDAP_SUCCESS) {
+#else
   if (ldap_set_option(handle->ld, LDAP_OPT_DEREF, &derefAliases) != LDAP_OPT_SUCCESS) {
+#endif
     throw MakeOptionError(env, "ldap_set_option failed for LDAP_OPT_DEREF");
   }
 
@@ -525,22 +613,49 @@ Napi::Value Search(const Napi::CallbackInfo& info) {
   LDAPControl** serverCtrls = nullptr;
   if (ldap_parse_result(handle->ld, result, nullptr, nullptr, nullptr, nullptr, &serverCtrls, 0) == LDAP_SUCCESS &&
       serverCtrls != nullptr) {
-    struct berval cookie{};
-    ber_int_t total = 0;
-    LDAPControl* pagedCtrl = nullptr;
+    bool hasPagedControl = false;
     for (int i = 0; serverCtrls[i] != nullptr; ++i) {
       if (serverCtrls[i]->ldctl_oid != nullptr &&
-          std::string(serverCtrls[i]->ldctl_oid) == LDAP_CONTROL_PAGEDRESULTS) {
-        pagedCtrl = serverCtrls[i];
+          std::string(serverCtrls[i]->ldctl_oid) == PagedResultsControlOid()) {
+        hasPagedControl = true;
         break;
       }
     }
-    if (pagedCtrl && ldap_parse_pageresponse_control(handle->ld, pagedCtrl, &total, &cookie) == LDAP_SUCCESS) {
-      if (cookie.bv_val != nullptr && cookie.bv_len > 0) {
-        output.Set("cookie", Napi::Buffer<char>::Copy(env, cookie.bv_val, cookie.bv_len));
+
+#ifdef _WIN32
+    if (hasPagedControl) {
+      ULONG total = 0;
+      struct berval* cookie = nullptr;
+      if (ldap_parse_page_control(handle->ld, serverCtrls, &total, &cookie) == LDAP_SUCCESS) {
+        if (cookie != nullptr && cookie->bv_val != nullptr && cookie->bv_len > 0) {
+          output.Set("cookie", Napi::Buffer<char>::Copy(env, cookie->bv_val, cookie->bv_len));
+        }
+        if (cookie != nullptr) {
+          ber_bvfree(cookie);
+        }
       }
-      if (cookie.bv_val) ber_memfree(cookie.bv_val);
     }
+#else
+    if (hasPagedControl) {
+      struct berval cookie{};
+      ber_int_t total = 0;
+      LDAPControl* pagedCtrl = nullptr;
+      for (int i = 0; serverCtrls[i] != nullptr; ++i) {
+        if (serverCtrls[i]->ldctl_oid != nullptr &&
+            std::string(serverCtrls[i]->ldctl_oid) == PagedResultsControlOid()) {
+          pagedCtrl = serverCtrls[i];
+          break;
+        }
+      }
+      if (pagedCtrl != nullptr &&
+          ldap_parse_pageresponse_control(handle->ld, pagedCtrl, &total, &cookie) == LDAP_SUCCESS) {
+        if (cookie.bv_val != nullptr && cookie.bv_len > 0) {
+          output.Set("cookie", Napi::Buffer<char>::Copy(env, cookie.bv_val, cookie.bv_len));
+        }
+        if (cookie.bv_val) ber_memfree(cookie.bv_val);
+      }
+    }
+#endif
     ldap_controls_free(serverCtrls);
   }
 
@@ -724,9 +839,22 @@ Napi::Value ModifyDN(const Napi::CallbackInfo& info) {
   bool sameParent = newParent.empty() || currentParent == newParent;
   const char* newParentPtr = sameParent ? nullptr : newParent.c_str();
 
-  int rc = ldap_rename_s(handle->ld, dn.c_str(), newRDN.c_str(), newParentPtr, 1, nullptr, nullptr);
+  int rc = LDAP_LOCAL_ERROR;
+#ifdef _WIN32
+  rc = ldap_rename_ext_s(handle->ld, dn.c_str(), newRDN.c_str(), newParentPtr, 1, nullptr, nullptr);
+#else
+  rc = ldap_rename_s(handle->ld, dn.c_str(), newRDN.c_str(), newParentPtr, 1, nullptr, nullptr);
+#endif
   if (rc != LDAP_SUCCESS) {
-    throw MakeLdapError(env, rc, "ldap_rename_s failed");
+    throw MakeLdapError(
+      env,
+      rc,
+#ifdef _WIN32
+      "ldap_rename_ext_s failed"
+#else
+      "ldap_rename_s failed"
+#endif
+    );
   }
   return env.Undefined();
 }
@@ -778,7 +906,11 @@ Napi::Value Unbind(const Napi::CallbackInfo& info) {
   auto it = g_handles.find(id);
   if (it != g_handles.end()) {
     if (it->second->ld != nullptr) {
+#ifdef _WIN32
+      ldap_unbind(it->second->ld);
+#else
       ldap_unbind_ext_s(it->second->ld, nullptr, nullptr);
+#endif
       it->second->ld = nullptr;
     }
     g_handles.erase(it);

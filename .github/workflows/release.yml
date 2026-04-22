@@ -75,29 +75,18 @@ jobs:
 
   prebuild-windows-x64:
     runs-on: windows-latest
-    defaults:
-      run:
-        shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
-      - uses: msys2/setup-msys2@v2
+      - uses: actions/setup-node@v4
         with:
-          msystem: UCRT64
-          update: true
-          install: >-
-            git
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-nodejs
-            mingw-w64-ucrt-x86_64-python
-            mingw-w64-ucrt-x86_64-openldap
-            mingw-w64-ucrt-x86_64-cyrus-sasl
-            make
-      - run: npm install
+          node-version: 22
+          cache: npm
+      - run: npm install --ignore-scripts
       - run: npm run build
       - name: Stage win32-x64 prebuild artifact
         run: |
-          mkdir -p release-prebuilds/win32-x64
-          cp build/Release/ldap_native.node release-prebuilds/win32-x64/ldap_native.node
+          New-Item -ItemType Directory -Force -Path release-prebuilds/win32-x64 | Out-Null
+          Copy-Item build/Release/ldap_native.node release-prebuilds/win32-x64/ldap_native.node
       - uses: actions/upload-artifact@v4
         with:
           name: prebuild-win32-x64

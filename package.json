@@ -42,6 +42,7 @@
   "files": [
     "*.cjs",
     "*.mjs",
+    "scripts/*.cjs",
     "src/*.cjs",
     "types",
     "prebuilds",
@@ -53,6 +54,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "install": "node scripts/install.cjs",
     "build": "npm run build:compat && node scripts/build-native.cjs && node scripts/create-prebuild.cjs",
     "build:native": "node scripts/build-native.cjs",
     "rebuild": "npm run build",

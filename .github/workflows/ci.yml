@@ -97,33 +97,24 @@ jobs:
             build/Release/ldap_native.node
             prebuilds/**
 
-  native-windows-msys2:
+  native-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
     runs-on: windows-latest
-    continue-on-error: true
-    defaults:
-      run:
-        shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
-      - uses: msys2/setup-msys2@v2
+      - uses: actions/setup-node@v4
         with:
-          msystem: UCRT64
-          update: true
-          install: >-
-            git
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-nodejs
-            mingw-w64-ucrt-x86_64-python
-            mingw-w64-ucrt-x86_64-openldap
-            mingw-w64-ucrt-x86_64-cyrus-sasl
-            make
+          node-version: ${{ matrix.node }}
+          cache: npm
       - run: npm install --ignore-scripts
       - run: npm run build:native
       - run: npm run smoke
       - uses: actions/upload-artifact@v4
-        if: success()
         with:
-          name: native-windows-msys2
+          name: native-windows-node${{ matrix.node }}
           path: |
             build/Release/ldap_native.node
             prebuilds/**

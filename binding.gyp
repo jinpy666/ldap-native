@@ -3,13 +3,19 @@
     {
       "target_name": "ldap_native",
       "sources": ["native/addon.cc"],
-      "win_delay_load_hook": "false",
+      "win_delay_load_hook": "true",
       "include_dirs": [
         "<!@(node scripts/detect-openldap-paths.cjs include)"
       ],
       "defines": ["NAPI_CPP_EXCEPTIONS"],
       "cflags_cc!": ["-fno-exceptions"],
       "cflags_cc": ["-fexceptions", "-frtti"],
+      "msvs_settings": {
+        "VCCLCompilerTool": {
+          "ExceptionHandling": 1,
+          "RuntimeTypeInfo": "true"
+        }
+      },
       "conditions": [
         [
           "OS=='mac'",
@@ -31,12 +37,10 @@
           "OS=='win'",
           {
             "include_dirs": [
-              "node_modules/node-addon-api"
+              "<!@(node -p \"require('node-addon-api').include\")"
             ],
-            "libraries": ["-lldap", "-llber", "-lsasl2"],
-            "library_dirs": [
-              "<!@(node scripts/detect-openldap-paths.cjs lib)"
-            ]
+            "dependencies": ["<!(node -p \"require('node-addon-api').gyp\")"],
+            "libraries": ["Wldap32.lib", "Crypt32.lib"]
           }
         ],
         [

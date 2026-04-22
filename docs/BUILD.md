@@ -14,6 +14,8 @@ This now performs three steps:
 
 The build helper uses the current Node installation as `node-gyp`'s `--nodedir`, which avoids downloading headers in offline environments.
 
+For npm consumers, the package `install` hook tries a packaged prebuild first and only falls back to a source build when no compatible native binary is available. It does not attempt to install OS packages automatically; instead it prints platform-specific guidance when native dependencies are missing.
+
 ## Linux / macOS source build
 
 Expected prerequisites:
@@ -26,21 +28,22 @@ Expected prerequisites:
 
 Typical dependencies:
 
-- Debian/Ubuntu: `libldap2-dev`, `libsasl2-dev`
+- Debian/Ubuntu: `libldap-dev`, `libsasl2-dev`
+- Fedora/RHEL/CentOS: `openldap-devel`, `cyrus-sasl-devel`
+- Alpine: `openldap-dev`, `cyrus-sasl-dev`
 - Homebrew: `openldap`, `cyrus-sasl`
 
 ## Windows source build
 
-The repository includes an MSYS2/UCRT64 workflow for native Windows builds. The GitHub Actions matrix installs:
+The repository now builds native Windows addons with the standard `node-gyp` + MSVC toolchain on `windows-latest`.
 
-- `mingw-w64-ucrt-x86_64-nodejs`
-- `mingw-w64-ucrt-x86_64-openldap`
-- `mingw-w64-ucrt-x86_64-cyrus-sasl`
-- `mingw-w64-ucrt-x86_64-gcc`
-- `mingw-w64-ucrt-x86_64-python`
-- `make`
+The GitHub Actions matrix uses:
 
-That gives a workable source-build path for Windows without having to switch the addon over to a completely different LDAP SDK.
+- Node.js 20 and 22 via `actions/setup-node`
+- the hosted Visual Studio Build Tools / Windows SDK image
+- Python 3 from the GitHub-hosted runner
+
+On Windows the addon links against the system `Wldap32` SDK instead of an external OpenLDAP/MSYS2 package set, which avoids the `node-gyp`/MinGW import-library mismatch that broke the previous workflow.
 
 ## Prebuild publication strategy
 
@@ -55,7 +58,7 @@ The included GitHub Actions workflow now separates:
 
 - API compatibility tests on Linux/macOS/Windows using the mock backend.
 - Native build jobs on Linux/macOS.
-- A native Windows job using MSYS2/UCRT64.
+- A native Windows job using MSVC on `windows-latest`.
 
 
 Repository: `jinpy666/ldap-native`
