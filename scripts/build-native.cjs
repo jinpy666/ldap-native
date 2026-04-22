@@ -12,6 +12,8 @@ if (isMsys2Windows) {
   env.CC = env.CC || 'gcc';
   env.CXX = env.CXX || 'g++';
   env.MAKE = env.MAKE || 'make';
+  env.MSYS2_ARG_CONV_EXCL = env.MSYS2_ARG_CONV_EXCL || '*';
+  delete env.npm_config_nodedir;
 }
 // node-addon-api requires C++ exceptions and RTTI, but Node's common.gypi
 // adds -fno-exceptions -fno-rtti which override binding.gyp's cflags_cc!.
@@ -39,7 +41,10 @@ function runNodeGyp(args) {
 if (isMsys2Windows) {
   const steps = [
     ['clean'],
-    ['configure', `--nodedir=${nodedir}`, '--', '-f', 'make'],
+    // Let node-gyp read MSYS2's process.config so it keeps the MinGW-friendly
+    // import library path (for example libnode.dll.a) instead of synthesizing
+    // an MSVC-style node.lib path from --nodedir.
+    ['configure', '--', '-f', 'make'],
     ['build'],
   ];
 
