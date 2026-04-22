@@ -3,6 +3,7 @@
     {
       "target_name": "ldap_native",
       "sources": ["native/addon.cc"],
+      "win_delay_load_hook": "false",
       "include_dirs": [
         "<!@(node -p \"require('node-addon-api').include\")",
         "<!@(node scripts/detect-openldap-paths.cjs include)"
