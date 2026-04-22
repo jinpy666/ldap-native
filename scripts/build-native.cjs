@@ -4,10 +4,11 @@ const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 
 const execPath = process.execPath;
+const nodeGypCli = require.resolve('node-gyp/bin/node-gyp.js');
 const nodedir = process.env.npm_config_nodedir || path.resolve(execPath, '..', '..');
 const env = { ...process.env };
 const isMsys2Windows = process.platform === 'win32' && Boolean(process.env.MSYSTEM);
-const args = ['node-gyp', 'rebuild', `--nodedir=${nodedir}`];
+const args = [nodeGypCli, 'rebuild', `--nodedir=${nodedir}`];
 if (isMsys2Windows) {
   args.push('--format=make');
   env.CC = env.CC || 'gcc';
@@ -20,8 +21,7 @@ if (isMsys2Windows) {
 if (process.platform !== 'win32' || isMsys2Windows) {
   env.CXXFLAGS = [env.CXXFLAGS, '-fexceptions', '-frtti'].filter(Boolean).join(' ');
 }
-const npxCommand = /^win/.test(process.platform) && !isMsys2Windows ? 'npx.cmd' : 'npx';
-const result = spawnSync(npxCommand, args, {
+const result = spawnSync(execPath, args, {
   stdio: 'inherit',
   cwd: path.resolve(__dirname, '..'),
   shell: false,
