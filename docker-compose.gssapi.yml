@@ -59,13 +59,7 @@ services:
     volumes:
       - .:/workspace
       - gssapi-node-modules:/workspace/node_modules
-      - gssapi-build:/workspace/build
-      - gssapi-prebuilds:/workspace/prebuilds
-      - gssapi-types:/workspace/types
 
 volumes:
   freeipa-data:
   gssapi-node-modules:
-  gssapi-build:
-  gssapi-prebuilds:
-  gssapi-types:

@@ -136,6 +136,8 @@ write_report() {
 - \`ipaclient-install.log\`
 - \`ipa-server-configure-first.log\`
 - \`ipa-server-run.log\`
+- \`runner-bootstrap.log\`
+- \`runner-verification.log\`
 
 ## Notes
 
@@ -213,7 +215,7 @@ compose exec -T "$RUNNER_SERVICE" bash -lc '
   npm install --ignore-scripts
   npm run build:compat
   npm run build:native
-'
+' 2>&1 | tee "$ARTIFACT_DIR/runner-bootstrap.log"
 
 CURRENT_STEP="run ldapsearch and ldap-native verification"
 echo "[6/7] Running ldapsearch and ldap-native GSSAPI verification"
@@ -233,7 +235,7 @@ compose exec -T "$RUNNER_SERVICE" bash -lc "
   export LDAPSEARCH_OUT='$ARTIFACT_DIR_IN_WORKSPACE/ldapsearch.out'
   export NODE_OUT='$ARTIFACT_DIR_IN_WORKSPACE/ldap-native.out'
   bash scripts/verify-gssapi-rhel9.sh
-"
+" 2>&1 | tee "$ARTIFACT_DIR/runner-verification.log"
 
 CURRENT_STEP="capture logs"
 echo "[7/7] Capturing logs"
