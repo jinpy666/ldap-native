@@ -177,7 +177,10 @@ jobs:
             echo "::error::NPM token is missing. Configure NPM_TOKEN as a GitHub Actions secret or variable."
             exit 1
           fi
-          npm whoami --registry=https://registry.npmjs.org/
+          if ! npm whoami --registry=https://registry.npmjs.org/; then
+            echo "::error::NPM_TOKEN is present but npm rejected it. Replace it with a valid npm automation token or a publish-capable access token."
+            exit 1
+          fi
       - run: npm install
       - uses: actions/download-artifact@v4
         with:
