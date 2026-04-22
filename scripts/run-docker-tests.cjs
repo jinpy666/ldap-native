@@ -28,7 +28,9 @@ function run(command, args, env = process.env) {
   return result.status ?? 1;
 }
 
-function waitForStartTls(maxAttempts = 15) {
+function waitForStartTls(maxAttempts = 90, delayMs = 2000) {
+  // The container can report healthy before slapd finishes generating DH params
+  // and advertising the StartTLS extended operation.
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const status = run('docker', [
       'compose',
@@ -57,7 +59,7 @@ function waitForStartTls(maxAttempts = 15) {
     }
 
     if (attempt < maxAttempts) {
-      sleep(1000);
+      sleep(delayMs);
     }
   }
 

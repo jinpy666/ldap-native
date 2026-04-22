@@ -9,6 +9,7 @@
 #endif
 #include <windows.h>
 #include <wincrypt.h>
+#include <winber.h>
 #include <winldap.h>
 #else
 #include <ldap.h>
@@ -44,6 +45,8 @@ Napi::Error MakeOptionError(Napi::Env env, const std::string& msg) {
 
 #ifdef _WIN32
 
+using LdapTimeval = l_timeval;
+
 using VerifyServerCertCallback = BOOLEAN (CALLBACK*)(PLDAP, PCCERT_CONTEXT*);
 
 BOOLEAN CALLBACK AllowAnyServerCertificate(PLDAP /* connection */, PCCERT_CONTEXT* serverCert) {
@@ -58,11 +61,17 @@ bool SetLdapOption(LDAP* ld, int option, const void* invalue) {
   return ldap_set_option(ld, option, invalue) == LDAP_SUCCESS;
 }
 
+PSTR MutableCString(const std::string& value) {
+  return const_cast<PSTR>(value.c_str());
+}
+
 const char* PagedResultsControlOid() {
   return LDAP_PAGED_RESULT_OID_STRING;
 }
 
 #else
+
+using LdapTimeval = timeval;
 
 bool SetLdapOption(LDAP* ld, int option, const void* invalue) {
   bool applied = false;
@@ -386,7 +395,7 @@ Napi::Value Connect(const Napi::CallbackInfo& info) {
 
   if (options.Has("timeout") && options.Get("timeout").IsNumber()) {
 #ifdef LDAP_OPT_TIMEOUT
-    struct timeval tv{};
+    LdapTimeval tv{};
     auto timeout = options.Get("timeout").As<Napi::Number>().Int64Value();
     if (timeout > 0) {
       tv.tv_sec = static_cast<long>(timeout / 1000);
@@ -398,7 +407,7 @@ Napi::Value Connect(const Napi::CallbackInfo& info) {
 
   if (options.Has("connectTimeout") && options.Get("connectTimeout").IsNumber()) {
 #ifdef LDAP_OPT_NETWORK_TIMEOUT
-    struct timeval tv{};
+    LdapTimeval tv{};
     auto timeout = options.Get("connectTimeout").As<Napi::Number>().Int64Value();
     if (timeout > 0) {
       tv.tv_sec = static_cast<long>(timeout / 1000);
@@ -431,10 +440,25 @@ Napi::Value StartTLS(const Napi::CallbackInfo& info) {
     ApplyTlsOptions(env, handle->ld, info[1].As<Napi::Object>());
   }
 
+#ifdef _WIN32
+  ULONG serverReturnValue = LDAP_SUCCESS;
+  LDAPMessage* result = nullptr;
+  int rc = static_cast<int>(ldap_start_tls_s(handle->ld, &serverReturnValue, &result, nullptr, nullptr));
+  if (result != nullptr) {
+    ldap_msgfree(result);
+  }
+  if (rc != LDAP_SUCCESS) {
+    int code = (rc == LDAP_OTHER && serverReturnValue != LDAP_SUCCESS)
+      ? static_cast<int>(serverReturnValue)
+      : rc;
+    throw MakeLdapError(env, code, "ldap_start_tls_s failed");
+  }
+#else
   int rc = ldap_start_tls_s(handle->ld, nullptr, nullptr);
   if (rc != LDAP_SUCCESS) {
     throw MakeLdapError(env, rc, "ldap_start_tls_s failed");
   }
+#endif
   return env.Undefined();
 }
 
@@ -449,7 +473,11 @@ Napi::Value BindSimple(const Napi::CallbackInfo& info) {
   cred.bv_val = const_cast<char*>(password.c_str());
   cred.bv_len = password.size();
 
+#ifdef _WIN32
+  int rc = static_cast<int>(ldap_simple_bind_s(handle->ld, MutableCString(dn), MutableCString(password)));
+#else
   int rc = ldap_sasl_bind_s(handle->ld, dn.c_str(), LDAP_SASL_SIMPLE, &cred, nullptr, nullptr, nullptr);
+#endif
   if (rc != LDAP_SUCCESS) {
     throw MakeLdapError(env, rc, "simple bind failed");
   }
@@ -480,7 +508,19 @@ Napi::Value BindSasl(const Napi::CallbackInfo& info) {
     credPtr = &cred;
   }
 
-  int rc = ldap_sasl_bind_s(handle->ld, nullptr, mech, credPtr, nullptr, nullptr, &servercredp);
+  int rc = ldap_sasl_bind_s(
+    handle->ld,
+#ifdef _WIN32
+    nullptr,
+    MutableCString(mechanism),
+#else
+    nullptr,
+    mech,
+#endif
+    credPtr,
+    nullptr,
+    nullptr,
+    &servercredp);
   if (servercredp != nullptr) {
     ber_bvfree(servercredp);
   }
@@ -515,7 +555,7 @@ Napi::Value Search(const Napi::CallbackInfo& info) {
 
   auto attrs = BuildAttributeArray(options.Get("attributes"));
   LDAPMessage* result = nullptr;
-  struct timeval timeout{};
+  LdapTimeval timeout{};
   timeout.tv_sec = timeLimit > 0 ? timeLimit : 0;
   timeout.tv_usec = 0;
 
@@ -539,9 +579,17 @@ Napi::Value Search(const Napi::CallbackInfo& info) {
     LDAPControl* ctrls[2] = {pageCtrl, nullptr};
     int rc = ldap_search_ext_s(
       handle->ld,
+#ifdef _WIN32
+      MutableCString(baseDN),
+#else
       baseDN.c_str(),
+#endif
       ScopeFromString(scope),
+#ifdef _WIN32
+      MutableCString(filter),
+#else
       filter.c_str(),
+#endif
       attrs.data(),
       attrsOnly,
       ctrls,
@@ -559,9 +607,17 @@ Napi::Value Search(const Napi::CallbackInfo& info) {
   } else {
     int rc = ldap_search_ext_s(
       handle->ld,
+#ifdef _WIN32
+      MutableCString(baseDN),
+#else
       baseDN.c_str(),
+#endif
       ScopeFromString(scope),
+#ifdef _WIN32
+      MutableCString(filter),
+#else
       filter.c_str(),
+#endif
       attrs.data(),
       attrsOnly,
       nullptr,
@@ -709,7 +765,16 @@ Napi::Value Add(const Napi::CallbackInfo& info) {
   }
   mods.push_back(nullptr);
 
-  int rc = ldap_add_ext_s(handle->ld, dn.c_str(), mods.data(), nullptr, nullptr);
+  int rc = ldap_add_ext_s(
+    handle->ld,
+#ifdef _WIN32
+    MutableCString(dn),
+#else
+    dn.c_str(),
+#endif
+    mods.data(),
+    nullptr,
+    nullptr);
   for (auto* mod : mods) {
     if (mod) delete mod;
   }
@@ -768,7 +833,16 @@ Napi::Value Modify(const Napi::CallbackInfo& info) {
   }
   mods.push_back(nullptr);
 
-  int rc = ldap_modify_ext_s(handle->ld, dn.c_str(), mods.data(), nullptr, nullptr);
+  int rc = ldap_modify_ext_s(
+    handle->ld,
+#ifdef _WIN32
+    MutableCString(dn),
+#else
+    dn.c_str(),
+#endif
+    mods.data(),
+    nullptr,
+    nullptr);
   for (auto* mod : mods) {
     if (mod) delete mod;
   }
@@ -783,7 +857,15 @@ Napi::Value Del(const Napi::CallbackInfo& info) {
   auto handle = GetHandle(info);
   auto payload = info[1].As<Napi::Object>();
   std::string dn = payload.Get("dn").As<Napi::String>().Utf8Value();
-  int rc = ldap_delete_ext_s(handle->ld, dn.c_str(), nullptr, nullptr);
+  int rc = ldap_delete_ext_s(
+    handle->ld,
+#ifdef _WIN32
+    MutableCString(dn),
+#else
+    dn.c_str(),
+#endif
+    nullptr,
+    nullptr);
   if (rc != LDAP_SUCCESS) {
     throw MakeLdapError(env, rc, "ldap_delete_ext_s failed");
   }
@@ -803,6 +885,20 @@ Napi::Value Compare(const Napi::CallbackInfo& info) {
   bval.bv_val = value.empty() ? nullptr : value.data();
   bval.bv_len = value.size();
 
+#ifdef _WIN32
+  int rc = static_cast<int>(ldap_compare_ext_s(
+    handle->ld,
+    MutableCString(dn),
+    MutableCString(attr),
+    nullptr,
+    &bval,
+    nullptr,
+    nullptr));
+  if (rc == LDAP_COMPARE_TRUE || rc == LDAP_COMPARE_FALSE) {
+    return Napi::Boolean::New(env, rc == LDAP_COMPARE_TRUE);
+  }
+  throw MakeLdapError(env, rc, "ldap_compare_ext_s failed");
+#else
   int msgid = 0;
   int rc = ldap_compare_ext(handle->ld, dn.c_str(), attr.c_str(), &bval, nullptr, nullptr, &msgid);
   if (rc != LDAP_SUCCESS) {
@@ -820,6 +916,7 @@ Napi::Value Compare(const Napi::CallbackInfo& info) {
   ldap_parse_result(handle->ld, result, &err, nullptr, nullptr, nullptr, nullptr, 0);
   ldap_msgfree(result);
   return Napi::Boolean::New(env, err == LDAP_COMPARE_TRUE);
+#endif
 }
 
 Napi::Value ModifyDN(const Napi::CallbackInfo& info) {
@@ -848,7 +945,14 @@ Napi::Value ModifyDN(const Napi::CallbackInfo& info) {
 
   int rc = LDAP_LOCAL_ERROR;
 #ifdef _WIN32
-  rc = ldap_rename_ext_s(handle->ld, dn.c_str(), newRDN.c_str(), newParentPtr, 1, nullptr, nullptr);
+  rc = ldap_rename_ext_s(
+    handle->ld,
+    MutableCString(dn),
+    MutableCString(newRDN),
+    sameParent ? nullptr : MutableCString(newParent),
+    1,
+    nullptr,
+    nullptr);
 #else
   rc = ldap_rename_s(handle->ld, dn.c_str(), newRDN.c_str(), newParentPtr, 1, nullptr, nullptr);
 #endif
@@ -887,7 +991,18 @@ Napi::Value Exop(const Napi::CallbackInfo& info) {
 
   struct berval* response = nullptr;
   char* responseOid = nullptr;
-  int rc = ldap_extended_operation_s(handle->ld, oid.c_str(), requestPtr, nullptr, nullptr, &responseOid, &response);
+  int rc = ldap_extended_operation_s(
+    handle->ld,
+#ifdef _WIN32
+    MutableCString(oid),
+#else
+    oid.c_str(),
+#endif
+    requestPtr,
+    nullptr,
+    nullptr,
+    &responseOid,
+    &response);
   if (rc != LDAP_SUCCESS) {
     throw MakeLdapError(env, rc, "ldap_extended_operation_s failed");
   }
@@ -899,7 +1014,11 @@ Napi::Value Exop(const Napi::CallbackInfo& info) {
   }
   if (response) {
     out.Set("value", Napi::Buffer<char>::Copy(env, response->bv_val, response->bv_len));
+#ifdef _WIN32
+    ldap_memfree(reinterpret_cast<PCHAR>(response));
+#else
     ber_bvfree(response);
+#endif
   } else {
     out.Set("value", env.Null());
   }
