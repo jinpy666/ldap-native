@@ -140,6 +140,60 @@ int SaslInteract(LDAP* /* ld */, unsigned /* flags */, void* defaultsVoid, void*
   return LDAP_SUCCESS;
 }
 
+int RunSaslInteractiveBind(Handle* handle, const char* mechanism, SaslDefaults* defaults) {
+  const char* resolvedMechanism = nullptr;
+  LDAPMessage* result = nullptr;
+  LDAP_SASL_INTERACT_PROC* interactProc = SaslInteract;
+  void* interactDefaults = defaults;
+  const char* currentMechanism = mechanism;
+  int rc = LDAP_SUCCESS;
+
+  while (true) {
+    int msgid = 0;
+    rc = ldap_sasl_interactive_bind(
+      handle->ld,
+      nullptr,
+      currentMechanism,
+      nullptr,
+      nullptr,
+      LDAP_SASL_QUIET,
+      interactProc,
+      interactDefaults,
+      result,
+      &resolvedMechanism,
+      &msgid);
+
+    if (result != nullptr) {
+      ldap_msgfree(result);
+      result = nullptr;
+    }
+
+    if (rc == LDAP_SUCCESS) {
+      break;
+    }
+
+    if (rc != LDAP_SASL_BIND_IN_PROGRESS) {
+      break;
+    }
+
+    currentMechanism = nullptr;
+    interactProc = nullptr;
+    interactDefaults = nullptr;
+
+    rc = ldap_result(handle->ld, msgid, LDAP_MSG_ALL, nullptr, &result);
+    if (rc == -1) {
+      ldap_get_option(handle->ld, LDAP_OPT_RESULT_CODE, &rc);
+      break;
+    }
+  }
+
+  if (result != nullptr) {
+    ldap_msgfree(result);
+  }
+
+  return rc;
+}
+
 #endif
 
 std::shared_ptr<Handle> GetHandle(const Napi::CallbackInfo& info) {
@@ -580,18 +634,13 @@ Napi::Value BindSasl(const Napi::CallbackInfo& info) {
   }
 
   // GSSAPI is usually negotiated through the Cyrus SASL client machinery.
-  // ldapsearch uses ldap_sasl_interactive_bind_s() for this path, which
-  // generates the initial token instead of sending only the mechanism name.
+  // Mature clients such as napi-ldap drive ldap_sasl_interactive_bind()
+  // through each LDAP_SASL_BIND_IN_PROGRESS round-trip instead of relying on
+  // a single *_bind_s() call. That keeps the SASL state machine intact and
+  // allows GSSAPI to emit the initial token instead of only the mechanism
+  // name on the first bind request.
   if (credPtr == nullptr && (mechanism.empty() || mechanism == "GSSAPI" || hasInteractiveDefaults)) {
-    int rc = ldap_sasl_interactive_bind_s(
-      handle->ld,
-      nullptr,
-      mech,
-      nullptr,
-      nullptr,
-      LDAP_SASL_QUIET,
-      hasInteractiveDefaults ? SaslInteract : nullptr,
-      hasInteractiveDefaults ? &defaults : nullptr);
+    int rc = RunSaslInteractiveBind(handle.get(), mech, &defaults);
     if (rc != LDAP_SUCCESS) {
       throw MakeLdapError(env, rc, "SASL interactive bind failed");
     }
