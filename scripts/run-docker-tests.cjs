@@ -15,6 +15,10 @@ const dockerEnv = {
   LDAP_CA_FILE: path.join(root, 'docker', 'openldap', 'tls', 'ca.crt'),
 };
 
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 function run(command, args, env = process.env) {
   const result = spawnSync(command, args, {
     stdio: 'inherit',
@@ -22,6 +26,43 @@ function run(command, args, env = process.env) {
     env,
   });
   return result.status ?? 1;
+}
+
+function waitForStartTls(maxAttempts = 15) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const status = run('docker', [
+      'compose',
+      'exec',
+      '-T',
+      'openldap',
+      'env',
+      'LDAPTLS_REQCERT=never',
+      'ldapsearch',
+      '-x',
+      '-ZZ',
+      '-H',
+      'ldap://localhost:389',
+      '-D',
+      'cn=admin,dc=example,dc=com',
+      '-w',
+      'admin',
+      '-b',
+      'dc=example,dc=com',
+      '(objectClass=*)',
+      'dn',
+    ]);
+
+    if (status === 0) {
+      return 0;
+    }
+
+    if (attempt < maxAttempts) {
+      sleep(1000);
+    }
+  }
+
+  run('docker', ['compose', 'logs', 'openldap']);
+  return 1;
 }
 
 let exitCode = 0;
@@ -32,6 +73,9 @@ try {
 
   exitCode = run('docker', ['compose', 'up', '-d', '--wait']);
   if (exitCode !== 0) throw new Error('docker compose up failed');
+
+  exitCode = waitForStartTls();
+  if (exitCode !== 0) throw new Error('docker StartTLS probe failed');
 
   exitCode = run(process.execPath, [path.join(root, 'scripts', 'run-integration-tests.cjs')], dockerEnv);
 } finally {

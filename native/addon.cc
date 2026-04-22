@@ -206,26 +206,28 @@ void SetObjectPropertyString(
   object.Set(property, Napi::String::New(env, value));
 }
 
-bool SetLdapOptionWithFallback(LDAP* ld, int option, const void* invalue, bool* usedGlobalFallback = nullptr) {
-  if (ldap_set_option(ld, option, invalue) == LDAP_OPT_SUCCESS) {
-    return true;
-  }
+bool SetLdapOptionOnGlobalAndHandle(LDAP* ld, int option, const void* invalue) {
+  bool applied = false;
+
+  // OpenLDAP TLS options are not consistently scoped across client library
+  // builds. Some libldap variants only honor the global option, while others
+  // honor the per-handle value. Apply both and accept either success path.
   if (ldap_set_option(nullptr, option, invalue) == LDAP_OPT_SUCCESS) {
-    if (usedGlobalFallback != nullptr) {
-      *usedGlobalFallback = true;
-    }
-    return true;
+    applied = true;
   }
-  return false;
+
+  if (ld != nullptr && ldap_set_option(ld, option, invalue) == LDAP_OPT_SUCCESS) {
+    applied = true;
+  }
+
+  return applied;
 }
 
 void ApplyTlsOptions(Napi::Env env, LDAP* ld, const Napi::Object& options) {
-  bool usedGlobalFallback = false;
-
   auto setStringOption = [&](const char* key, int option, const char* name) {
     if (!options.Has(key) || !options.Get(key).IsString()) return;
     std::string value = options.Get(key).As<Napi::String>().Utf8Value();
-    if (!SetLdapOptionWithFallback(ld, option, value.c_str(), &usedGlobalFallback)) {
+    if (!SetLdapOptionOnGlobalAndHandle(ld, option, value.c_str())) {
       throw MakeOptionError(env, std::string("ldap_set_option failed for ") + name);
     }
   };
@@ -238,24 +240,20 @@ void ApplyTlsOptions(Napi::Env env, LDAP* ld, const Napi::Object& options) {
   int requireCert = ReadBoolean(options, "rejectUnauthorized", true)
     ? LDAP_OPT_X_TLS_HARD
     : LDAP_OPT_X_TLS_NEVER;
-  if (!SetLdapOptionWithFallback(ld, LDAP_OPT_X_TLS_REQUIRE_CERT, &requireCert, &usedGlobalFallback)) {
+  if (!SetLdapOptionOnGlobalAndHandle(ld, LDAP_OPT_X_TLS_REQUIRE_CERT, &requireCert)) {
     throw MakeOptionError(env, "ldap_set_option failed for LDAP_OPT_X_TLS_REQUIRE_CERT");
   }
 
   if (options.Has("minVersion") && options.Get("minVersion").IsString()) {
     int protocolMin = MapTlsProtocolMin(options.Get("minVersion").As<Napi::String>().Utf8Value());
     if (protocolMin != 0 &&
-        !SetLdapOptionWithFallback(ld, LDAP_OPT_X_TLS_PROTOCOL_MIN, &protocolMin, &usedGlobalFallback)) {
+        !SetLdapOptionOnGlobalAndHandle(ld, LDAP_OPT_X_TLS_PROTOCOL_MIN, &protocolMin)) {
       throw MakeOptionError(env, "ldap_set_option failed for LDAP_OPT_X_TLS_PROTOCOL_MIN");
     }
   }
 
   int newContext = 0;
-  if (!SetLdapOptionWithFallback(
-        usedGlobalFallback ? nullptr : ld,
-        LDAP_OPT_X_TLS_NEWCTX,
-        &newContext,
-        &usedGlobalFallback)) {
+  if (!SetLdapOptionOnGlobalAndHandle(ld, LDAP_OPT_X_TLS_NEWCTX, &newContext)) {
     throw MakeOptionError(env, "ldap_set_option failed for LDAP_OPT_X_TLS_NEWCTX");
   }
 }
