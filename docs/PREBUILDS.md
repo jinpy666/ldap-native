@@ -7,8 +7,8 @@ This package is structured to support two delivery modes:
 
 The current scripts included here do the following:
 
-- `npm run build` builds the native addon, writes `dist/`, and stages the current platform addon into `prebuilds/`.
-- `lib/native-loader.cjs` resolves add-ons from local builds, staged prebuilds, or optional platform packages.
+- `npm run build` refreshes `types/`, builds the native addon, and stages the current platform addon into `prebuilds/`.
+- `src/native-loader.cjs` resolves add-ons from local builds, staged prebuilds, or optional platform packages.
 
 ## Current triples
 

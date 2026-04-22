@@ -8,21 +8,20 @@ Expose an API that is as close as practical to `ldapts`, but route operations th
 
 ### 1. Compatibility/export layer
 
-Files in the repository root and `lib/` preserve the public package shape expected by `ldapts` consumers:
+Files in the repository root preserve the public package shape expected by `ldapts` consumers:
 
 - `index.cjs`, `index.mjs`, `index.d.ts`
-- `lib/controls.*`
-- `lib/filters.*`
-- `lib/ber.*`
-- `lib/dn.*`
-- `lib/FilterParser.*`
-- `lib/PostalAddress.*`
+- `controls.cjs`, `controls.mjs`
+- `filters.cjs`, `filters.mjs`
+- `ber.cjs`, `ber.mjs`
+- `dn.cjs`, `dn.mjs`
+- `errors.cjs`, `errors.mjs`
 
-Most helper modules are adapted from upstream `ldapts` source so that their behavior and tests remain directly comparable.
+The heavy lifting for those entrypoints lives in `src/runtime.cjs`, while the root files keep the public import paths stable.
 
 ### 2. Client implementation layer
 
-`lib/Client.cjs` provides the `Client` class and keeps the important public method signatures aligned with upstream:
+`src/client.cjs` provides the `Client` class and keeps the important public method signatures aligned with upstream:
 
 - `bind(dnOrSaslMechanism, [password], [controls])`
 - `search(baseDN, options, [controls])`
@@ -38,14 +37,14 @@ This layer also:
 
 ### 3. Native loader layer
 
-`lib/native-loader.cjs` resolves the native addon from:
+`src/native-loader.cjs` resolves the native addon from:
 
 1. an explicit `LDAP_NATIVE_NATIVE_PATH`,
 2. local `build/Release` or `build/Debug`,
 3. staged `prebuilds/<platform-triple>/`,
 4. optional platform package installs.
 
-For fast compatibility tests, `LDAP_NATIVE_USE_MOCK=1` switches the runtime to `lib/mock-native.cjs`.
+For fast compatibility tests, `LDAP_NATIVE_USE_MOCK=1` switches the runtime to `src/mock-native.cjs`.
 
 ### 4. Native addon layer
 

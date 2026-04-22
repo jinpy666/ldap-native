@@ -31,6 +31,6 @@ Prefer focused commits such as:
 ## Areas that need the most care
 
 - `native/addon.cc`
-- `lib/Client.cjs`
+- `src/client.cjs`
 - GitHub Actions workflows
 - compatibility exports and upstream-facing helper behavior

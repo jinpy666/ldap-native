@@ -1,6 +1,6 @@
 'use strict';
 
-const { Client } = require('./src/Client.cjs');
+const { Client } = require('./src/client.cjs');
 const runtime = require('./src/runtime.cjs');
 
 exports.Client = Client;

@@ -1,351 +1,170 @@
 # Repository layout
 
-This repository intentionally mixes **package compatibility code**, **native addon code**, and **release automation** in one place. That is practical for a native npm package, but it also means new contributors can get lost quickly.
+This repository combines three concerns in one place:
 
-This document explains where each responsibility lives, which directories are source of truth, and which files to change for common tasks.
+1. a `ldapts`-compatible JavaScript package surface
+2. a native addon backed by OpenLDAP `libldap`
+3. packaging and verification for multi-platform Node.js releases
+
+The easiest way to stay oriented is to separate **source of truth** from **generated output**.
 
 ## Top-level map
 
 ```text
 .
-├─ .github/workflows/
-│  ├─ ci.yml
-│  └─ release.yml
-├─ docs/
-│  ├─ ARCHITECTURE.md
-│  ├─ BUILD.md
-│  ├─ COMPATIBILITY.md
-│  ├─ KERBEROS.md
-│  ├─ NPM_PUBLISH.md
-│  ├─ PREBUILDS.md
-│  ├─ TESTING.md
-│  └─ REPOSITORY_LAYOUT.md
-├─ examples/
-│  └─ smoke-native.cjs
-├─ lib/
-│  ├─ Client.cjs
-│  ├─ native-loader.cjs
-│  ├─ mock-native.cjs
-│  └─ *.cjs helper/export modules
-├─ native/
-│  └─ addon.cc
-├─ scripts/
-│  ├─ build-native.cjs
-│  ├─ build-dist.cjs
-│  ├─ create-prebuild.cjs
-│  └─ run-upstream-direct.cjs
-├─ tests/
-│  ├─ integration/
-│  └─ unit/
-├─ upstream/
-│  ├─ Controls.test.ts
-│  ├─ FilterParser.test.ts
-│  ├─ PostalAddress.test.ts
-│  ├─ ber/
-│  ├─ dn/
-│  └─ filters/
-├─ upstream-src/
-├─ binding.gyp
-├─ index.cjs
-├─ index.d.ts
-├─ index.mjs
-├─ package.json
-└─ tsconfig.compat.json
+├─ .github/workflows/        CI and release automation
+├─ docs/                     contributor-facing documentation
+├─ examples/                 runnable smoke / usage examples
+├─ native/                   Node-API addon source
+├─ prebuilds/                staged native binaries for publish / install
+├─ scripts/                  build and test helpers
+├─ src/                      runtime implementation + type source
+├─ tests/                    unit, parity, and integration tests
+├─ types/                    generated declaration output
+├─ upstream/                 vendored upstream ldapts tests
+├─ upstream-src/             vendored upstream helper source
+├─ binding.gyp               native build definition
+├─ index.cjs|mjs|d.ts        public package entrypoints
+├─ controls|filters|errors|dn|ber.*  public subpath entrypoints
+└─ package.json              exports, scripts, publish metadata
 ```
 
-Builds and release jobs also produce these generated directories:
+Generated or refreshed during normal development:
 
-- `compat-cjs/`
 - `build/`
-- `dist/`
+- `types/`
 - `prebuilds/`
 
-## What each area is for
+## Source of truth
 
-### Public package entrypoints
+### Runtime layer
 
-**Files:**
+**Directory:** `src/`
 
-- `index.cjs`
-- `index.mjs`
-- `index.d.ts`
-- `package.json`
-
-These files define the public package surface and the export map seen by consumers.
-
-Use this area when you need to:
-
-- expose a new helper or public symbol
-- change the package entrypoint layout
-- adjust CommonJS / ESM / type exports
-- update npm metadata, scripts, or published file lists
-
-`package.json` is also the quickest way to understand the supported commands and the packaging boundary.
-
-### JavaScript compatibility and runtime layer
-
-**Directory:** `lib/`
-
-This is the main JavaScript implementation layer that keeps the package compatible with `ldapts`-style usage while delegating the actual LDAP operations to the native addon.
+This is the main hand-written runtime implementation.
 
 Key files:
 
-- `lib/Client.cjs`  
-  The public `Client` implementation. It normalizes options, dispatches simple bind vs SASL bind, shapes search results as `{ searchEntries, searchReferences }`, and translates a subset of control objects into native-friendly payloads.
+- `src/client.cjs`
+  Public `Client` implementation. This is where option normalization, TLS preprocessing, paged search aggregation, error conversion, and JS/native bridging logic live.
 
-- `lib/native-loader.cjs`  
-  Resolves the runtime backend. It looks for:
-  1. `LDAP_NATIVE_NATIVE_PATH`
-  2. local `build/Release` or `build/Debug`
-  3. staged `prebuilds/<platform-triple>/`
-  4. optional platform packages
-  5. or the mock backend when `LDAP_NATIVE_USE_MOCK=1`
+- `src/runtime.cjs`
+  Runtime definitions for controls, filters, BER helpers, DN helpers, and error classes.
 
-- `lib/mock-native.cjs`  
-  A deterministic fake backend used by unit and parity tests so API-shape validation can run without a compiled native addon.
+- `src/native-loader.cjs`
+  Resolves the addon from local builds, staged `prebuilds/`, or optional platform packages.
 
-The rest of `lib/` contains helper exports such as controls, filters, BER helpers, DN helpers, and compatibility-oriented modules.
+- `src/mock-native.cjs`
+  Deterministic mock backend used by unit and parity tests.
 
-Change `lib/` when you need to:
+Change `src/` when you need to:
 
-- add or change a public client method
-- adjust how controls are encoded before crossing the JS/native boundary
-- change addon resolution rules
-- improve testability of the high-level runtime behavior
+- add or fix public runtime behavior
+- align `Client` semantics with `ldapts`
+- change native loader behavior
+- improve mock-backed tests
 
 ### Native addon layer
 
-**Directory:** `native/`  
+**Directory:** `native/`
 **Build definition:** `binding.gyp`
 
-`native/addon.cc` is the Node-API addon. It is the bridge from JavaScript calls into OpenLDAP C APIs.
+`native/addon.cc` is the Node-API bridge to OpenLDAP C APIs.
 
-The current addon covers:
+Change this area when you need to:
 
-- `ldap_initialize`
-- `ldap_start_tls_s`
-- `ldap_sasl_bind_s`
-- `ldap_search_ext_s`
-- `ldap_add_ext_s`
-- `ldap_modify_ext_s`
-- `ldap_delete_ext_s`
-- `ldap_compare_ext`
-- `ldap_rename_s`
-- `ldap_extended_operation_s`
-- `ldap_unbind_ext_s`
+- map a JavaScript API call onto libldap
+- fix TLS, BER, or binary attribute handling
+- change native result shaping or memory ownership
+- adjust platform linking rules
 
-Change the native layer when you need to:
+### Type source layer
 
-- add a new LDAP operation
-- change how an operation maps to OpenLDAP
-- fix native memory handling or result shaping
-- improve performance or move blocking work to async workers
+**Directory:** `src/types/`
 
-If you add new native behavior, you will usually also need to update `lib/Client.cjs`, tests, and docs.
+This directory is the source for published declaration files. Running `npm run build:compat` regenerates `types/`.
 
-### Build and packaging automation
+The filenames here intentionally keep upstream-style PascalCase module names because they mirror `ldapts` helper/class modules. That is different from the lowercase convention used by the hand-written runtime files in `src/`.
 
-**Directory:** `scripts/`
+### Public entrypoint layer
 
-This directory contains the local build helpers used by npm scripts.
+**Files:** repository root
 
-Important files:
+These files preserve the public package surface:
 
-- `scripts/build-native.cjs`  
-  Runs `node-gyp rebuild` and points `node-gyp` at the current Node installation via `--nodedir`. This is important for offline and air-gapped build environments.
+- `index.cjs`, `index.mjs`, `index.d.ts`
+- `controls.cjs`, `controls.mjs`
+- `filters.cjs`, `filters.mjs`
+- `errors.cjs`, `errors.mjs`
+- `dn.cjs`, `dn.mjs`
+- `ber.cjs`, `ber.mjs`
 
-- `scripts/build-dist.cjs`  
-  Rebuilds `dist/` by copying the root entrypoints, `lib/`, and `compat-cjs/` into the publishable package layout.
+Change these files when you need to:
 
-- `scripts/create-prebuild.cjs`  
-  Takes the current platform's `build/Release/ldap_native.node` and stages it into `prebuilds/<platform-triple>/`.
+- expose a new symbol
+- adjust CommonJS / ESM package shape
+- add or change npm subpath exports
 
-- `scripts/run-upstream-direct.cjs`  
-  Executes the vendored upstream `ldapts` tests that are intended to run directly under Node's built-in test runner.
-
-Change `scripts/` when you need to:
-
-- alter the local build flow
-- change the published output layout
-- change how prebuilds are staged
-- expand or shrink the direct-upstream test set
-
-### Compatibility fixtures and vendored upstream assets
+### Compatibility assets
 
 **Directories:**
 
 - `upstream/`
 - `upstream-src/`
 
-`upstream/` holds the vendored upstream test files that this package executes directly for compatibility evidence. This is where the repository proves that selected helper modules still behave close to upstream `ldapts`.
+`upstream/` contains vendored upstream tests executed for helper parity.
 
-`upstream-src/` holds vendored upstream source reused by compatibility-oriented helpers and type generation.
+`upstream-src/` contains vendored upstream helper implementations and type-adjacent assets still reused by this repository. Treat both as compatibility fixtures, not day-to-day app code.
 
-Change these directories carefully. They are not ordinary app code; they are compatibility assets. If you update them, also re-check:
+## Generated output
 
-- `docs/COMPATIBILITY.md`
-- `docs/TESTING.md`
-- any build steps that generate `compat-cjs/`
+Treat these paths as generated output or build artifacts:
 
-### Test coverage
+- `build/`
+- `types/`
+- `prebuilds/`
+
+Do not hand-edit them as the primary fix path. Prefer:
+
+- `src/` for runtime behavior
+- `native/` for addon behavior
+- `src/types/` for declaration changes
+
+## Build and test helpers
+
+**Directory:** `scripts/`
+
+Important files:
+
+- `scripts/build-native.cjs`
+  Rebuilds the addon with `node-gyp` and the current Node headers.
+
+- `scripts/create-prebuild.cjs`
+  Copies the current platform addon into `prebuilds/<platform-triple>/`.
+
+- `scripts/run-unit-tests.cjs`
+- `scripts/run-import-tests.cjs`
+- `scripts/run-upstream-direct.cjs`
+- `scripts/run-integration-tests.cjs`
+
+Change `scripts/` when you need to adjust the local build or verification flow.
+
+## Tests
 
 **Directory:** `tests/`
 
-This directory covers package-specific validation.
-
-Typical responsibilities:
-
-- `tests/unit/`  
-  package tests, mock-backed behavior tests, and migration-relevant client parity tests such as `tests/unit/upstream-client-parity.test.cjs`
-
-- `tests/integration/`  
-  optional real OpenLDAP server tests that validate the compiled addon end-to-end
-
-Use `tests/` when you need to:
-
-- add migration-surface coverage for `Client`
-- validate new native operations
-- add a regression test for runtime behavior
-- verify a real server interaction that the mock backend cannot prove
-
-### Examples
-
-**Directory:** `examples/`
-
-This directory is for runnable smoke and usage examples. `examples/smoke-native.cjs` is the minimal sanity check that a built addon can be loaded and that the package surface is present.
-
-Add examples here when you want:
-
-- a quick manual verification path
-- a minimal reproduction for a bug
-- a short usage sample that should stay runnable over time
-
-### Documentation
-
-**Directory:** `docs/`
-
-The repository already splits documentation by topic:
-
-- `ARCHITECTURE.md` — conceptual layering
-- `BUILD.md` — local build prerequisites and flow
-- `COMPATIBILITY.md` — boundary with upstream `ldapts`
-- `KERBEROS.md` — GSSAPI expectations and limits
-- `TESTING.md` — test commands and environment
-- `PREBUILDS.md` — binary distribution strategy
-- `NPM_PUBLISH.md` — publish workflow and trusted publishing setup
-
-Use `docs/` as the source of truth for contributor-facing explanation. If you change behavior in code, update the matching document in the same change.
-
-### GitHub automation
-
-**Directory:** `.github/workflows/`
-
-Two workflows matter today:
-
-- `ci.yml`  
-  Runs API compatibility tests across Linux/macOS/Windows and also performs native build jobs on supported platforms.
-
-- `release.yml`  
-  Builds platform-specific prebuilds on tag pushes, downloads and assembles them into `prebuilds/`, then publishes the npm package.
-
-Change workflow files when you need to:
-
-- add platform coverage
-- change release assembly logic
-- adjust Node versions
-- alter publish conditions or npm release behavior
-
-## Source of truth vs generated output
-
-Treat these directories as **generated output**, not the primary place to edit behavior:
-
-- `compat-cjs/`
-- `build/`
-- `dist/`
-- `prebuilds/`
-
-In general:
-
-- edit `lib/`, `native/`, root entrypoints, scripts, tests, and docs by hand
-- regenerate outputs with the npm scripts
-- avoid hand-editing `dist/` or staged binaries
-
-## Common contributor tasks
-
-### “I want to add or change a public `Client` method.”
-
-Start with:
-
-- `lib/Client.cjs`
-- `native/addon.cc`
 - `tests/unit/`
-- `tests/integration/` if the behavior needs real-server validation
-- `docs/COMPATIBILITY.md` if the change affects parity claims
+  Package-level unit tests, mock-backed parity checks, and import surface validation.
 
-### “I want to change how the addon is found at runtime.”
+- `tests/integration/`
+  Real OpenLDAP integration coverage, including Docker-backed validation.
 
-Start with:
+Use `tests/` for repo-specific regressions and end-to-end behavior that the upstream vendored suites do not prove.
 
-- `lib/native-loader.cjs`
-- `scripts/create-prebuild.cjs`
-- `docs/PREBUILDS.md`
-- `release.yml` if platform packaging changes too
+## Contributor rules of thumb
 
-### “I want to change the package export surface.”
-
-Start with:
-
-- `index.cjs`
-- `index.mjs`
-- `index.d.ts`
-- `package.json`
-- `scripts/build-dist.cjs`
-
-### “I want to improve CI or release automation.”
-
-Start with:
-
-- `.github/workflows/ci.yml`
-- `.github/workflows/release.yml`
-- `docs/BUILD.md`
-- `docs/NPM_PUBLISH.md`
-- `docs/PREBUILDS.md`
-
-### “I want to expand compatibility evidence against upstream `ldapts`.”
-
-Start with:
-
-- `upstream/`
-- `upstream-src/`
-- `scripts/run-upstream-direct.cjs`
-- `tests/unit/upstream-client-parity.test.cjs`
-- `docs/COMPATIBILITY.md`
-- `docs/TESTING.md`
-
-## Suggested reading order
-
-If you are new to the repository, this order works well:
-
-1. `README.md`
-2. `docs/REPOSITORY_LAYOUT.md`
-3. `docs/ARCHITECTURE.md`
-4. `docs/BUILD.md`
-5. `docs/TESTING.md`
-6. `docs/COMPATIBILITY.md`
-
-If your focus is specifically Kerberos or release engineering, then jump next to:
-
-- `docs/KERBEROS.md`
-- `docs/PREBUILDS.md`
-- `docs/NPM_PUBLISH.md`
-
-## Practical rule of thumb
-
-When in doubt, ask:
-
-- “Am I changing the public JavaScript API?” → `lib/` + entrypoints
-- “Am I changing LDAP execution?” → `native/`
-- “Am I changing packaging or delivery?” → `scripts/` + workflows
-- “Am I proving compatibility?” → `upstream/` + tests + compatibility docs
-
-That rule keeps most changes in the right layer and prevents generated output from becoming the accidental source of truth.
+- If the bug is in API behavior, start with `src/client.cjs` and `tests/`.
+- If the bug is in TLS, BER, binary values, or LDAP operation mapping, inspect `native/addon.cc`.
+- If the issue is package surface or subpath exports, inspect the root entrypoints and `package.json`.
+- If the change is type-only, edit `src/types/` and regenerate `types/`.
+- If you see PascalCase under `src/types/` or `upstream-src/`, that is expected. The lowercase runtime convention only applies to the hand-written runtime implementation layer.

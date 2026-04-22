@@ -121,7 +121,15 @@ class BerWriter {
 }
 
 class Control {
-  constructor(options) {
+  constructor(typeOrOptions, criticality = false, value) {
+    if (typeof typeOrOptions === 'string') {
+      this.type = typeOrOptions;
+      this.criticality = criticality;
+      this.value = value;
+      return;
+    }
+
+    const options = typeOrOptions ?? {};
     this.type = options.type;
     this.criticality = options.criticality ?? false;
     this.value = options.value;

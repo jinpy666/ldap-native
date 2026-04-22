@@ -8,8 +8,8 @@ npm run build
 
 This now performs three steps:
 
-1. Builds the native addon with `node-gyp`.
-2. Writes `dist/` outputs for CommonJS, ESM, and types.
+1. Generates declaration files from `src/types/` into `types/`.
+2. Builds the native addon with `node-gyp`.
 3. Stages the current platform addon into `prebuilds/<platform-triple>/`.
 
 The build helper uses the current Node installation as `node-gyp`'s `--nodedir`, which avoids downloading headers in offline environments.
@@ -49,7 +49,7 @@ Recommended release flow:
 1. CI builds per-platform addons.
 2. Each CI run stages `prebuilds/<platform-triple>/ldap_native.node`.
 3. Either publish those prebuilds directly with the main package or wrap them in optional platform packages.
-4. The main package resolves the right addon via `lib/native-loader.cjs`.
+4. The main package resolves the right addon via `src/native-loader.cjs`.
 
 The included GitHub Actions workflow now separates:
 

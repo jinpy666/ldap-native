@@ -85,7 +85,7 @@ test('search with sizeLimit', { skip }, async () => {
   }
 });
 
-test('search with paged results returns first page', { skip }, async () => {
+test('search with paged results returns all entries', { skip }, async () => {
   const client = createClient();
   try {
     await bindAdmin(client);
@@ -95,8 +95,7 @@ test('search with paged results returns first page', { skip }, async () => {
       attributes: ['uid'],
       paged: { pageSize: 2 },
     });
-    assert.ok(result.searchEntries.length >= 1, 'should find at least 1 entry on first page');
-    assert.ok(result.searchEntries.length <= 2, 'pageSize=2 should return at most 2 entries');
+    assert.ok(result.searchEntries.length > 2, 'search() should aggregate every paged result');
   } finally {
     await client.unbind();
   }
@@ -282,6 +281,37 @@ test('modifyDN renames entry', { skip }, async () => {
     });
 
     await client.modifyDN(oldDN, newDN);
+
+    const result = await client.search(newDN, {
+      scope: 'base',
+      filter: '(objectClass=*)',
+      attributes: ['cn'],
+    });
+    assert.equal(result.searchEntries.length, 1);
+  } finally {
+    await client.del(newDN).catch(() => {});
+    await client.del(oldDN).catch(() => {});
+    await client.unbind();
+  }
+});
+
+test('modifyDN accepts RDN-only rename', { skip }, async () => {
+  const client = createClient();
+  const parentDN = 'ou=users,dc=example,dc=com';
+  const oldDN = uniqueDN('old-rdn', parentDN);
+  const suffix = crypto.randomBytes(4).toString('hex');
+  const newRDN = `cn=renamed-rdn-${suffix}`;
+  const newDN = `${newRDN},${parentDN}`;
+  try {
+    await bindAdmin(client);
+    await client.add(oldDN, {
+      objectClass: ['inetOrgPerson'],
+      cn: 'Old RDN',
+      sn: 'Name',
+      uid: `oldrdn-${suffix}`,
+    });
+
+    await client.modifyDN(oldDN, newRDN);
 
     const result = await client.search(newDN, {
       scope: 'base',

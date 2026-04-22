@@ -5,13 +5,26 @@
 // gyp treats backslashes as escape characters in <!@(...) expansion.
 const path = require('path');
 
-const type = process.argv[2]; // 'include' or 'lib'
+const fs = require('fs');
+
+const type = process.argv[2]; // 'include' | 'lib' | 'libs'
 
 if (process.platform === 'darwin') {
   const cp = require('child_process');
   try {
     const prefix = cp.execSync('brew --prefix openldap', { encoding: 'utf8' }).trim();
-    console.log(type === 'include' ? `${prefix}/include` : `${prefix}/lib`);
+    if (type === 'include') {
+      console.log(`${prefix}/include`);
+    } else if (type === 'lib') {
+      console.log(`${prefix}/lib`);
+    } else if (type === 'libs') {
+      const candidates = ['libldap.dylib', 'liblber.dylib']
+        .map((name) => path.join(prefix, 'lib', name))
+        .filter((filename) => fs.existsSync(filename));
+      if (candidates.length > 0) {
+        console.log(candidates.join('\n'));
+      }
+    }
   } catch {}
 }
 // On Linux and Windows, system paths are found automatically by the compiler.

@@ -38,7 +38,7 @@ Three layers, top to bottom:
 
 1. **Entry layer** (`index.cjs`, `index.mjs`) — re-exports everything from `src/`. Uses `exports.xxx = yyy` form for ESM named export compatibility.
 
-2. **Runtime layer** (`src/runtime.cjs`, `src/Client.cjs`, `src/native-loader.cjs`, `src/mock-native.cjs`) — all runtime code in `src/`. `runtime.cjs` is the single source of truth for all class definitions (BER, DN, filters, controls, errors, etc.). `Client.cjs` wraps native calls with error conversion.
+2. **Runtime layer** (`src/runtime.cjs`, `src/client.cjs`, `src/native-loader.cjs`, `src/mock-native.cjs`) — all runtime code in `src/`. `runtime.cjs` is the single source of truth for all class definitions (BER, DN, filters, controls, errors, etc.). `client.cjs` wraps native calls with error conversion.
 
 3. **Native addon** (`native/addon.cc`) — Node-API C++ addon calling OpenLDAP `libldap`/`liblber`/`libsasl2`. Links against `-lldap -llber -lsasl2`.
 

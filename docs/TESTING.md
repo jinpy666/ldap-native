@@ -14,7 +14,6 @@ Build generated compatibility artifacts:
 
 ```bash
 npm run build:compat
-npm run build:dist
 ```
 
 Run unit and parity tests:
@@ -41,10 +40,22 @@ Run optional real OpenLDAP integration tests:
 npm run test:integration
 ```
 
+Run both integration suites against the bundled Docker OpenLDAP environment:
+
+```bash
+npm run test:docker
+```
+
 Run everything except live-server integration setup:
 
 ```bash
 npm test
+```
+
+Run the current full local regression path:
+
+```bash
+npm run test:full
 ```
 
 ## Direct upstream test set
@@ -91,3 +102,5 @@ Then run:
 ```bash
 npm run test:integration
 ```
+
+If you just want the repo-managed Docker path, `npm run test:docker` now brings the container up, runs the entire `tests/integration/` directory against it, and tears it down automatically.

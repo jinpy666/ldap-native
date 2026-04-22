@@ -9,8 +9,8 @@ const ROOT = path.resolve(__dirname, '..', '..');
 function getConfig() {
   if (process.env.LDAP_DOCKER === '1') {
     return {
-      url: 'ldap://localhost:3890',
-      ldapsUrl: 'ldaps://localhost:6360',
+      url: 'ldap://127.0.0.1:3890',
+      ldapsUrl: 'ldaps://127.0.0.1:6360',
       bindDN: 'cn=admin,dc=example,dc=com',
       bindPassword: 'admin',
       baseDN: 'dc=example,dc=com',

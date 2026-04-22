@@ -1,10 +1,13 @@
 #include <napi.h>
 #include <ldap.h>
-#include <string>
-#include <vector>
+
+#include <algorithm>
+#include <cctype>
+#include <cstring>
 #include <map>
 #include <memory>
-#include <cstring>
+#include <string>
+#include <vector>
 
 namespace {
 
@@ -22,11 +25,16 @@ Napi::Error MakeLdapError(Napi::Env env, int code, const std::string& msg) {
   return err;
 }
 
+Napi::Error MakeOptionError(Napi::Env env, const std::string& msg) {
+  return MakeLdapError(env, LDAP_LOCAL_ERROR, msg);
+}
+
 std::shared_ptr<Handle> GetHandle(const Napi::CallbackInfo& info) {
   auto env = info.Env();
   if (!info[0].IsObject()) {
     throw Napi::TypeError::New(env, "handle object required");
   }
+
   auto obj = info[0].As<Napi::Object>();
   uint32_t id = obj.Get("id").As<Napi::Number>().Uint32Value();
   auto it = g_handles.find(id);
@@ -34,6 +42,247 @@ std::shared_ptr<Handle> GetHandle(const Napi::CallbackInfo& info) {
     throw Napi::Error::New(env, "invalid handle");
   }
   return it->second;
+}
+
+std::string ToLowerCopy(const std::string& value) {
+  std::string lower = value;
+  std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char ch) {
+    return static_cast<char>(std::tolower(ch));
+  });
+  return lower;
+}
+
+bool EndsWith(const std::string& value, const std::string& suffix) {
+  return value.size() >= suffix.size()
+    && value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+std::string ReadUtf8String(const Napi::Object& object, const char* key, const std::string& fallback = "") {
+  if (!object.Has(key)) return fallback;
+  auto value = object.Get(key);
+  if (value.IsUndefined() || value.IsNull()) return fallback;
+  return value.ToString().Utf8Value();
+}
+
+bool ReadBoolean(const Napi::Object& object, const char* key, bool fallback) {
+  if (!object.Has(key)) return fallback;
+  auto value = object.Get(key);
+  if (!value.IsBoolean()) return fallback;
+  return value.As<Napi::Boolean>().Value();
+}
+
+std::vector<std::string> ReadByteStrings(const Napi::Value& value) {
+  std::vector<std::string> values;
+  if (value.IsUndefined() || value.IsNull()) {
+    return values;
+  }
+
+  auto append = [&values](const Napi::Value& entry) {
+    if (entry.IsUndefined() || entry.IsNull()) return;
+    if (entry.IsBuffer()) {
+      auto buffer = entry.As<Napi::Buffer<char>>();
+      values.emplace_back(buffer.Data(), buffer.Length());
+      return;
+    }
+    values.push_back(entry.ToString().Utf8Value());
+  };
+
+  if (value.IsArray()) {
+    auto array = value.As<Napi::Array>();
+    values.reserve(array.Length());
+    for (uint32_t i = 0; i < array.Length(); ++i) {
+      append(array.Get(i));
+    }
+    return values;
+  }
+
+  append(value);
+  return values;
+}
+
+std::vector<std::string> ReadStringArray(const Napi::Value& value) {
+  std::vector<std::string> values;
+  if (!value.IsArray()) return values;
+
+  auto array = value.As<Napi::Array>();
+  values.reserve(array.Length());
+  for (uint32_t i = 0; i < array.Length(); ++i) {
+    auto entry = array.Get(i);
+    if (!entry.IsUndefined() && !entry.IsNull()) {
+      values.push_back(entry.ToString().Utf8Value());
+    }
+  }
+  return values;
+}
+
+void CollectEntryAttributes(
+  const Napi::Value& entryValue,
+  std::vector<std::string>& attrNames,
+  std::vector<std::vector<std::string>>& attrValues
+) {
+  if (entryValue.IsArray()) {
+    auto array = entryValue.As<Napi::Array>();
+    attrNames.reserve(array.Length());
+    attrValues.reserve(array.Length());
+    for (uint32_t i = 0; i < array.Length(); ++i) {
+      auto attribute = array.Get(i);
+      if (!attribute.IsObject()) continue;
+      auto attributeObject = attribute.As<Napi::Object>();
+      attrNames.push_back(attributeObject.Get("type").ToString().Utf8Value());
+      attrValues.push_back(ReadByteStrings(attributeObject.Get("values")));
+    }
+    return;
+  }
+
+  auto entry = entryValue.As<Napi::Object>();
+  auto props = entry.GetPropertyNames();
+  attrNames.reserve(props.Length());
+  attrValues.reserve(props.Length());
+
+  for (uint32_t i = 0; i < props.Length(); ++i) {
+    std::string key = props.Get(i).As<Napi::String>().Utf8Value();
+    attrNames.push_back(key);
+    attrValues.push_back(ReadByteStrings(entry.Get(key)));
+  }
+}
+
+int MapTlsProtocolMin(const std::string& minVersion) {
+  if (minVersion == "TLSv1") return LDAP_OPT_X_TLS_PROTOCOL_TLS1_0;
+  if (minVersion == "TLSv1.0") return LDAP_OPT_X_TLS_PROTOCOL_TLS1_0;
+  if (minVersion == "TLSv1.1") return LDAP_OPT_X_TLS_PROTOCOL_TLS1_1;
+  if (minVersion == "TLSv1.2") return LDAP_OPT_X_TLS_PROTOCOL_TLS1_2;
+  if (minVersion == "TLSv1.3") return LDAP_OPT_X_TLS_PROTOCOL_TLS1_3;
+  return 0;
+}
+
+int MapDerefAliases(const std::string& derefAliases) {
+  if (derefAliases == "always") return LDAP_DEREF_ALWAYS;
+  if (derefAliases == "find") return LDAP_DEREF_FINDING;
+  if (derefAliases == "search") return LDAP_DEREF_SEARCHING;
+  return LDAP_DEREF_NEVER;
+}
+
+int ScopeFromString(const std::string& scope) {
+  if (scope == "base") return LDAP_SCOPE_BASE;
+  if (scope == "one") return LDAP_SCOPE_ONELEVEL;
+  if (scope == "sub") return LDAP_SCOPE_SUBTREE;
+  if (scope == "children" || scope == "subordinates") {
+#if defined(LDAP_SCOPE_CHILDREN)
+    return LDAP_SCOPE_CHILDREN;
+#elif defined(LDAP_SCOPE_SUBORDINATE)
+    return LDAP_SCOPE_SUBORDINATE;
+#else
+    return LDAP_SCOPE_SUBTREE;
+#endif
+  }
+  return LDAP_SCOPE_SUBTREE;
+}
+
+bool ShouldReturnBuffer(const std::string& attribute, const std::vector<std::string>& explicitBufferAttributes) {
+  std::string normalizedAttribute = ToLowerCopy(attribute);
+  if (EndsWith(normalizedAttribute, ";binary")) return true;
+
+  std::string baseAttribute = normalizedAttribute;
+  std::size_t optionIndex = baseAttribute.find(';');
+  if (optionIndex != std::string::npos) {
+    baseAttribute = baseAttribute.substr(0, optionIndex);
+  }
+
+  for (const auto& requested : explicitBufferAttributes) {
+    std::string normalizedRequested = ToLowerCopy(requested);
+    if (normalizedRequested == normalizedAttribute || normalizedRequested == baseAttribute) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void SetObjectPropertyString(
+  Napi::Env env,
+  Napi::Object& object,
+  const std::string& property,
+  const std::string& value
+) {
+  object.Set(property, Napi::String::New(env, value));
+}
+
+bool SetLdapOptionWithFallback(LDAP* ld, int option, const void* invalue, bool* usedGlobalFallback = nullptr) {
+  if (ldap_set_option(ld, option, invalue) == LDAP_OPT_SUCCESS) {
+    return true;
+  }
+  if (ldap_set_option(nullptr, option, invalue) == LDAP_OPT_SUCCESS) {
+    if (usedGlobalFallback != nullptr) {
+      *usedGlobalFallback = true;
+    }
+    return true;
+  }
+  return false;
+}
+
+void ApplyTlsOptions(Napi::Env env, LDAP* ld, const Napi::Object& options) {
+  bool usedGlobalFallback = false;
+
+  auto setStringOption = [&](const char* key, int option, const char* name) {
+    if (!options.Has(key) || !options.Get(key).IsString()) return;
+    std::string value = options.Get(key).As<Napi::String>().Utf8Value();
+    if (!SetLdapOptionWithFallback(ld, option, value.c_str(), &usedGlobalFallback)) {
+      throw MakeOptionError(env, std::string("ldap_set_option failed for ") + name);
+    }
+  };
+
+  setStringOption("caFile", LDAP_OPT_X_TLS_CACERTFILE, "LDAP_OPT_X_TLS_CACERTFILE");
+  setStringOption("certFile", LDAP_OPT_X_TLS_CERTFILE, "LDAP_OPT_X_TLS_CERTFILE");
+  setStringOption("keyFile", LDAP_OPT_X_TLS_KEYFILE, "LDAP_OPT_X_TLS_KEYFILE");
+  setStringOption("ciphers", LDAP_OPT_X_TLS_CIPHER_SUITE, "LDAP_OPT_X_TLS_CIPHER_SUITE");
+
+  int requireCert = ReadBoolean(options, "rejectUnauthorized", true)
+    ? LDAP_OPT_X_TLS_HARD
+    : LDAP_OPT_X_TLS_NEVER;
+  if (!SetLdapOptionWithFallback(ld, LDAP_OPT_X_TLS_REQUIRE_CERT, &requireCert, &usedGlobalFallback)) {
+    throw MakeOptionError(env, "ldap_set_option failed for LDAP_OPT_X_TLS_REQUIRE_CERT");
+  }
+
+  if (options.Has("minVersion") && options.Get("minVersion").IsString()) {
+    int protocolMin = MapTlsProtocolMin(options.Get("minVersion").As<Napi::String>().Utf8Value());
+    if (protocolMin != 0 &&
+        !SetLdapOptionWithFallback(ld, LDAP_OPT_X_TLS_PROTOCOL_MIN, &protocolMin, &usedGlobalFallback)) {
+      throw MakeOptionError(env, "ldap_set_option failed for LDAP_OPT_X_TLS_PROTOCOL_MIN");
+    }
+  }
+
+  int newContext = 0;
+  if (!SetLdapOptionWithFallback(
+        usedGlobalFallback ? nullptr : ld,
+        LDAP_OPT_X_TLS_NEWCTX,
+        &newContext,
+        &usedGlobalFallback)) {
+    throw MakeOptionError(env, "ldap_set_option failed for LDAP_OPT_X_TLS_NEWCTX");
+  }
+}
+
+std::vector<char*> BuildAttributeArray(const Napi::Value& value) {
+  std::vector<char*> attrs;
+  if (!value.IsArray()) {
+    attrs.push_back(nullptr);
+    return attrs;
+  }
+
+  auto array = value.As<Napi::Array>();
+  attrs.reserve(array.Length() + 1);
+  for (uint32_t i = 0; i < array.Length(); ++i) {
+    std::string attr = array.Get(i).As<Napi::String>().Utf8Value();
+    char* dup = static_cast<char*>(std::malloc(attr.size() + 1));
+    std::memcpy(dup, attr.c_str(), attr.size() + 1);
+    attrs.push_back(dup);
+  }
+  attrs.push_back(nullptr);
+  return attrs;
+}
+
+void FreeAttributeArray(std::vector<char*>& attrs) {
+  for (char* ptr : attrs) {
+    if (ptr) std::free(ptr);
+  }
 }
 
 Napi::Value Connect(const Napi::CallbackInfo& info) {
@@ -52,16 +301,26 @@ Napi::Value Connect(const Napi::CallbackInfo& info) {
 
   if (options.Has("timeout") && options.Get("timeout").IsNumber()) {
     struct timeval tv{};
-    tv.tv_sec = static_cast<long>(options.Get("timeout").As<Napi::Number>().Int64Value() / 1000);
-    tv.tv_usec = static_cast<long>((options.Get("timeout").As<Napi::Number>().Int64Value() % 1000) * 1000);
-    ldap_set_option(ld, LDAP_OPT_TIMEOUT, &tv);
+    auto timeout = options.Get("timeout").As<Napi::Number>().Int64Value();
+    if (timeout > 0) {
+      tv.tv_sec = static_cast<long>(timeout / 1000);
+      tv.tv_usec = static_cast<long>((timeout % 1000) * 1000);
+      ldap_set_option(ld, LDAP_OPT_TIMEOUT, &tv);
+    }
   }
 
   if (options.Has("connectTimeout") && options.Get("connectTimeout").IsNumber()) {
     struct timeval tv{};
-    tv.tv_sec = static_cast<long>(options.Get("connectTimeout").As<Napi::Number>().Int64Value() / 1000);
-    tv.tv_usec = static_cast<long>((options.Get("connectTimeout").As<Napi::Number>().Int64Value() % 1000) * 1000);
-    ldap_set_option(ld, LDAP_OPT_NETWORK_TIMEOUT, &tv);
+    auto timeout = options.Get("connectTimeout").As<Napi::Number>().Int64Value();
+    if (timeout > 0) {
+      tv.tv_sec = static_cast<long>(timeout / 1000);
+      tv.tv_usec = static_cast<long>((timeout % 1000) * 1000);
+      ldap_set_option(ld, LDAP_OPT_NETWORK_TIMEOUT, &tv);
+    }
+  }
+
+  if (options.Has("tlsOptions") && options.Get("tlsOptions").IsObject()) {
+    ApplyTlsOptions(env, ld, options.Get("tlsOptions").As<Napi::Object>());
   }
 
   auto handle = std::make_shared<Handle>();
@@ -80,14 +339,9 @@ Napi::Value StartTLS(const Napi::CallbackInfo& info) {
   auto env = info.Env();
   auto handle = GetHandle(info);
   if (info.Length() > 1 && info[1].IsObject()) {
-    auto options = info[1].As<Napi::Object>();
-    if (options.Has("caFile") && options.Get("caFile").IsString()) {
-      std::string caFile = options.Get("caFile").As<Napi::String>().Utf8Value();
-      ldap_set_option(nullptr, LDAP_OPT_X_TLS_CACERTFILE, caFile.c_str());
-    }
+    ApplyTlsOptions(env, handle->ld, info[1].As<Napi::Object>());
   }
-  int requireCert = LDAP_OPT_X_TLS_ALLOW;
-  ldap_set_option(nullptr, LDAP_OPT_X_TLS_REQUIRE_CERT, &requireCert);
+
   int rc = ldap_start_tls_s(handle->ld, nullptr, nullptr);
   if (rc != LDAP_SUCCESS) {
     throw MakeLdapError(env, rc, "ldap_start_tls_s failed");
@@ -121,17 +375,20 @@ Napi::Value BindSasl(const Napi::CallbackInfo& info) {
 
   const char* mech = mechanism.c_str();
   struct berval* servercredp = nullptr;
-  struct berval cred;
+  struct berval cred{};
   struct berval* credPtr = nullptr;
   std::string credStorage;
 
   if (payload.Has("credential") && !payload.Get("credential").IsNull() && !payload.Get("credential").IsUndefined()) {
-    if (payload.Get("credential").IsString()) {
-      credStorage = payload.Get("credential").As<Napi::String>().Utf8Value();
-      cred.bv_val = credStorage.data();
-      cred.bv_len = credStorage.size();
-      credPtr = &cred;
+    if (payload.Get("credential").IsBuffer()) {
+      auto buffer = payload.Get("credential").As<Napi::Buffer<char>>();
+      credStorage.assign(buffer.Data(), buffer.Length());
+    } else {
+      credStorage = payload.Get("credential").ToString().Utf8Value();
     }
+    cred.bv_val = credStorage.empty() ? nullptr : credStorage.data();
+    cred.bv_len = credStorage.size();
+    credPtr = &cred;
   }
 
   int rc = ldap_sasl_bind_s(handle->ld, nullptr, mech, credPtr, nullptr, nullptr, &servercredp);
@@ -145,37 +402,6 @@ Napi::Value BindSasl(const Napi::CallbackInfo& info) {
   return env.Undefined();
 }
 
-std::vector<char*> BuildAttributeArray(const Napi::Value& value) {
-  std::vector<char*> attrs;
-  if (!value.IsArray()) {
-    attrs.push_back(nullptr);
-    return attrs;
-  }
-  auto array = value.As<Napi::Array>();
-  attrs.reserve(array.Length() + 1);
-  for (uint32_t i = 0; i < array.Length(); ++i) {
-    std::string attr = array.Get(i).As<Napi::String>().Utf8Value();
-    char* dup = static_cast<char*>(std::malloc(attr.size() + 1));
-    std::memcpy(dup, attr.c_str(), attr.size() + 1);
-    attrs.push_back(dup);
-  }
-  attrs.push_back(nullptr);
-  return attrs;
-}
-
-void FreeAttributeArray(std::vector<char*>& attrs) {
-  for (char* ptr : attrs) {
-    if (ptr) std::free(ptr);
-  }
-}
-
-int ScopeFromString(const std::string& scope) {
-  if (scope == "base") return LDAP_SCOPE_BASE;
-  if (scope == "one") return LDAP_SCOPE_ONELEVEL;
-  if (scope == "sub") return LDAP_SCOPE_SUBTREE;
-  return LDAP_SCOPE_SUBTREE;
-}
-
 Napi::Value Search(const Napi::CallbackInfo& info) {
   auto env = info.Env();
   auto handle = GetHandle(info);
@@ -183,18 +409,23 @@ Napi::Value Search(const Napi::CallbackInfo& info) {
   std::string baseDN = payload.Get("baseDN").As<Napi::String>().Utf8Value();
   auto options = payload.Get("options").As<Napi::Object>();
   std::string filter = options.Get("filter").As<Napi::String>().Utf8Value();
-  std::string scope = options.Get("scope").As<Napi::String>().Utf8Value();
+  std::string scope = ReadUtf8String(options, "scope", "sub");
+  int derefAliases = MapDerefAliases(ReadUtf8String(options, "derefAliases", "never"));
   int sizeLimit = options.Has("sizeLimit") ? options.Get("sizeLimit").As<Napi::Number>().Int32Value() : 0;
   int timeLimit = options.Has("timeLimit") ? options.Get("timeLimit").As<Napi::Number>().Int32Value() : 0;
+  int attrsOnly = ReadBoolean(options, "returnAttributeValues", true) ? 0 : 1;
+  std::vector<std::string> explicitBufferAttributes = ReadStringArray(options.Get("explicitBufferAttributes"));
+
+  if (ldap_set_option(handle->ld, LDAP_OPT_DEREF, &derefAliases) != LDAP_OPT_SUCCESS) {
+    throw MakeOptionError(env, "ldap_set_option failed for LDAP_OPT_DEREF");
+  }
 
   auto attrs = BuildAttributeArray(options.Get("attributes"));
-
   LDAPMessage* result = nullptr;
   struct timeval timeout{};
   timeout.tv_sec = timeLimit > 0 ? timeLimit : 0;
   timeout.tv_usec = 0;
 
-  BerElement* serverctrls = nullptr;
   if (options.Has("paged") && options.Get("paged").IsObject()) {
     auto paged = options.Get("paged").As<Napi::Object>();
     int pageSize = paged.Get("pageSize").As<Napi::Number>().Int32Value();
@@ -203,16 +434,15 @@ Napi::Value Search(const Napi::CallbackInfo& info) {
       auto cookieBuf = paged.Get("cookie").As<Napi::Buffer<char>>();
       cookie.bv_val = cookieBuf.Data();
       cookie.bv_len = cookieBuf.Length();
-    } else {
-      cookie.bv_val = nullptr;
-      cookie.bv_len = 0;
     }
+
     LDAPControl* pageCtrl = nullptr;
     int rcCtrl = ldap_create_page_control(handle->ld, pageSize, &cookie, 0, &pageCtrl);
     if (rcCtrl != LDAP_SUCCESS) {
       FreeAttributeArray(attrs);
       throw MakeLdapError(env, rcCtrl, "ldap_create_page_control failed");
     }
+
     LDAPControl* ctrls[2] = {pageCtrl, nullptr};
     int rc = ldap_search_ext_s(
       handle->ld,
@@ -220,7 +450,7 @@ Napi::Value Search(const Napi::CallbackInfo& info) {
       ScopeFromString(scope),
       filter.c_str(),
       attrs.data(),
-      0,
+      attrsOnly,
       ctrls,
       nullptr,
       timeLimit > 0 ? &timeout : nullptr,
@@ -228,6 +458,7 @@ Napi::Value Search(const Napi::CallbackInfo& info) {
       &result);
     ldap_control_free(pageCtrl);
     FreeAttributeArray(attrs);
+
     if (rc != LDAP_SUCCESS && rc != LDAP_PARTIAL_RESULTS && rc != LDAP_SIZELIMIT_EXCEEDED) {
       if (result) ldap_msgfree(result);
       throw MakeLdapError(env, rc, "ldap_search_ext_s failed");
@@ -239,13 +470,14 @@ Napi::Value Search(const Napi::CallbackInfo& info) {
       ScopeFromString(scope),
       filter.c_str(),
       attrs.data(),
-      0,
+      attrsOnly,
       nullptr,
       nullptr,
       timeLimit > 0 ? &timeout : nullptr,
       sizeLimit,
       &result);
     FreeAttributeArray(attrs);
+
     if (rc != LDAP_SUCCESS && rc != LDAP_PARTIAL_RESULTS && rc != LDAP_SIZELIMIT_EXCEEDED) {
       if (result) ldap_msgfree(result);
       throw MakeLdapError(env, rc, "ldap_search_ext_s failed");
@@ -253,20 +485,30 @@ Napi::Value Search(const Napi::CallbackInfo& info) {
   }
 
   Napi::Array entries = Napi::Array::New(env);
-  uint32_t index = 0;
-  for (LDAPMessage* entry = ldap_first_entry(handle->ld, result); entry != nullptr; entry = ldap_next_entry(handle->ld, entry)) {
+  uint32_t entryIndex = 0;
+
+  for (LDAPMessage* entry = ldap_first_entry(handle->ld, result);
+       entry != nullptr;
+       entry = ldap_next_entry(handle->ld, entry)) {
     char* dn = ldap_get_dn(handle->ld, entry);
     Napi::Object jsEntry = Napi::Object::New(env);
-    jsEntry.Set("dn", dn ? dn : "");
+    SetObjectPropertyString(env, jsEntry, "dn", dn ? dn : "");
     if (dn) ldap_memfree(dn);
 
     BerElement* ber = nullptr;
-    for (char* attr = ldap_first_attribute(handle->ld, entry, &ber); attr != nullptr; attr = ldap_next_attribute(handle->ld, entry, ber)) {
+    for (char* attr = ldap_first_attribute(handle->ld, entry, &ber);
+         attr != nullptr;
+         attr = ldap_next_attribute(handle->ld, entry, ber)) {
       struct berval** values = ldap_get_values_len(handle->ld, entry, attr);
       if (values != nullptr) {
         Napi::Array jsValues = Napi::Array::New(env);
+        bool returnBuffer = ShouldReturnBuffer(attr, explicitBufferAttributes);
         for (int i = 0; values[i] != nullptr; ++i) {
-          jsValues.Set(i, Napi::String::New(env, std::string(values[i]->bv_val, values[i]->bv_len)));
+          if (returnBuffer) {
+            jsValues.Set(i, Napi::Buffer<char>::Copy(env, values[i]->bv_val, values[i]->bv_len));
+          } else {
+            jsValues.Set(i, Napi::String::New(env, std::string(values[i]->bv_val, values[i]->bv_len)));
+          }
         }
         jsEntry.Set(attr, jsValues);
         ldap_value_free_len(values);
@@ -274,7 +516,7 @@ Napi::Value Search(const Napi::CallbackInfo& info) {
       ldap_memfree(attr);
     }
     if (ber) ber_free(ber, 0);
-    entries.Set(index++, jsEntry);
+    entries.Set(entryIndex++, jsEntry);
   }
 
   Napi::Object output = Napi::Object::New(env);
@@ -283,13 +525,14 @@ Napi::Value Search(const Napi::CallbackInfo& info) {
   output.Set("cookie", Napi::Buffer<char>::Copy(env, "", 0));
 
   LDAPControl** serverCtrls = nullptr;
-  if (ldap_parse_result(handle->ld, result, nullptr, nullptr, nullptr, nullptr, &serverCtrls, 0) == LDAP_SUCCESS && serverCtrls != nullptr) {
+  if (ldap_parse_result(handle->ld, result, nullptr, nullptr, nullptr, nullptr, &serverCtrls, 0) == LDAP_SUCCESS &&
+      serverCtrls != nullptr) {
     struct berval cookie{};
     ber_int_t total = 0;
     LDAPControl* pagedCtrl = nullptr;
-    for (int i = 0; serverCtrls[i] != nullptr; i++) {
+    for (int i = 0; serverCtrls[i] != nullptr; ++i) {
       if (serverCtrls[i]->ldctl_oid != nullptr &&
-          std::string(serverCtrls[i]->ldctl_oid) == "1.2.840.113556.1.4.319") {
+          std::string(serverCtrls[i]->ldctl_oid) == LDAP_CONTROL_PAGEDRESULTS) {
         pagedCtrl = serverCtrls[i];
         break;
       }
@@ -312,44 +555,36 @@ Napi::Value Add(const Napi::CallbackInfo& info) {
   auto handle = GetHandle(info);
   auto payload = info[1].As<Napi::Object>();
   std::string dn = payload.Get("dn").As<Napi::String>().Utf8Value();
-  auto entry = payload.Get("entry").As<Napi::Object>();
 
   std::vector<LDAPMod*> mods;
   std::vector<std::string> attrNames;
   std::vector<std::vector<std::string>> attrValues;
-  std::vector<std::vector<char*>> rawValues;
+  std::vector<std::vector<berval>> rawValues;
+  std::vector<std::vector<berval*>> rawPointers;
 
-  auto props = entry.GetPropertyNames();
-  for (uint32_t i = 0; i < props.Length(); ++i) {
-    std::string key = props.Get(i).As<Napi::String>().Utf8Value();
-    attrNames.push_back(key);
-
-    std::vector<std::string> values;
-    auto jsVal = entry.Get(key);
-    if (jsVal.IsArray()) {
-      auto arr = jsVal.As<Napi::Array>();
-      for (uint32_t j = 0; j < arr.Length(); ++j) {
-        values.push_back(arr.Get(j).ToString().Utf8Value());
-      }
-    } else {
-      values.push_back(jsVal.ToString().Utf8Value());
-    }
-    attrValues.push_back(values);
-  }
-
+  CollectEntryAttributes(payload.Get("entry"), attrNames, attrValues);
   rawValues.resize(attrValues.size());
+  rawPointers.resize(attrValues.size());
   mods.reserve(attrValues.size() + 1);
+
   for (size_t i = 0; i < attrValues.size(); ++i) {
-    rawValues[i].reserve(attrValues[i].size() + 1);
+    rawValues[i].reserve(attrValues[i].size());
+    rawPointers[i].reserve(attrValues[i].size() + 1);
     for (auto& value : attrValues[i]) {
-      rawValues[i].push_back(const_cast<char*>(value.c_str()));
+      berval bval{};
+      bval.bv_val = value.empty() ? const_cast<char*>("") : const_cast<char*>(value.data());
+      bval.bv_len = value.size();
+      rawValues[i].push_back(bval);
     }
-    rawValues[i].push_back(nullptr);
+    for (auto& bval : rawValues[i]) {
+      rawPointers[i].push_back(&bval);
+    }
+    rawPointers[i].push_back(nullptr);
 
     LDAPMod* mod = new LDAPMod();
-    mod->mod_op = LDAP_MOD_ADD;
+    mod->mod_op = LDAP_MOD_ADD | LDAP_MOD_BVALUES;
     mod->mod_type = const_cast<char*>(attrNames[i].c_str());
-    mod->mod_values = rawValues[i].data();
+    mod->mod_bvalues = rawPointers[i].data();
     mods.push_back(mod);
   }
   mods.push_back(nullptr);
@@ -374,9 +609,12 @@ Napi::Value Modify(const Napi::CallbackInfo& info) {
   std::vector<LDAPMod*> mods;
   std::vector<std::string> attrNames;
   std::vector<std::vector<std::string>> attrValues;
-  std::vector<std::vector<char*>> rawValues;
+  std::vector<std::vector<berval>> rawValues;
+  std::vector<std::vector<berval*>> rawPointers;
+
   mods.reserve(changes.Length() + 1);
   rawValues.resize(changes.Length());
+  rawPointers.resize(changes.Length());
 
   for (uint32_t i = 0; i < changes.Length(); ++i) {
     auto change = changes.Get(i).As<Napi::Object>();
@@ -384,29 +622,28 @@ Napi::Value Modify(const Napi::CallbackInfo& info) {
     auto modification = change.Get("modification").As<Napi::Object>();
     std::string type = modification.Get("type").ToString().Utf8Value();
     attrNames.push_back(type);
+    attrValues.push_back(ReadByteStrings(modification.Get("values")));
 
-    std::vector<std::string> values;
-    auto vals = modification.Get("values");
-    if (vals.IsArray()) {
-      auto arr = vals.As<Napi::Array>();
-      for (uint32_t j = 0; j < arr.Length(); ++j) {
-        values.push_back(arr.Get(j).ToString().Utf8Value());
-      }
-    }
-    attrValues.push_back(values);
-
-    rawValues[i].reserve(values.size() + 1);
+    rawValues[i].reserve(attrValues[i].size());
+    rawPointers[i].reserve(attrValues[i].size() + 1);
     for (auto& value : attrValues[i]) {
-      rawValues[i].push_back(const_cast<char*>(value.c_str()));
+      berval bval{};
+      bval.bv_val = value.empty() ? const_cast<char*>("") : const_cast<char*>(value.data());
+      bval.bv_len = value.size();
+      rawValues[i].push_back(bval);
     }
-    rawValues[i].push_back(nullptr);
+    for (auto& bval : rawValues[i]) {
+      rawPointers[i].push_back(&bval);
+    }
+    rawPointers[i].push_back(nullptr);
 
     LDAPMod* mod = new LDAPMod();
     if (operation == "add") mod->mod_op = LDAP_MOD_ADD;
     else if (operation == "delete") mod->mod_op = LDAP_MOD_DELETE;
     else mod->mod_op = LDAP_MOD_REPLACE;
+    mod->mod_op |= LDAP_MOD_BVALUES;
     mod->mod_type = const_cast<char*>(attrNames.back().c_str());
-    mod->mod_values = rawValues[i].data();
+    mod->mod_bvalues = rawPointers[i].data();
     mods.push_back(mod);
   }
   mods.push_back(nullptr);
@@ -439,22 +676,26 @@ Napi::Value Compare(const Napi::CallbackInfo& info) {
   auto payload = info[1].As<Napi::Object>();
   std::string dn = payload.Get("dn").As<Napi::String>().Utf8Value();
   std::string attr = payload.Get("attribute").As<Napi::String>().Utf8Value();
-  std::string value = payload.Get("value").ToString().Utf8Value();
+  std::vector<std::string> values = ReadByteStrings(payload.Get("value"));
+  std::string value = values.empty() ? std::string() : values.front();
 
-  struct berval bval;
-  bval.bv_val = value.data();
+  struct berval bval{};
+  bval.bv_val = value.empty() ? nullptr : value.data();
   bval.bv_len = value.size();
+
   int msgid = 0;
   int rc = ldap_compare_ext(handle->ld, dn.c_str(), attr.c_str(), &bval, nullptr, nullptr, &msgid);
   if (rc != LDAP_SUCCESS) {
     throw MakeLdapError(env, rc, "ldap_compare_ext failed");
   }
+
   LDAPMessage* result = nullptr;
   rc = ldap_result(handle->ld, msgid, LDAP_MSG_ALL, nullptr, &result);
   if (rc == -1) {
     if (result) ldap_msgfree(result);
     throw Napi::Error::New(env, "ldap_result failed");
   }
+
   int err = LDAP_OTHER;
   ldap_parse_result(handle->ld, result, &err, nullptr, nullptr, nullptr, nullptr, 0);
   ldap_msgfree(result);
@@ -468,7 +709,6 @@ Napi::Value ModifyDN(const Napi::CallbackInfo& info) {
   std::string dn = payload.Get("dn").As<Napi::String>().Utf8Value();
   std::string newDN = payload.Get("newDN").As<Napi::String>().Utf8Value();
 
-  // Extract RDN (everything before the first comma) from newDN
   std::string newRDN = newDN;
   std::string newParent;
   auto comma = newDN.find(',');
@@ -477,14 +717,16 @@ Napi::Value ModifyDN(const Napi::CallbackInfo& info) {
     newParent = newDN.substr(comma + 1);
   }
 
-  // Check if the parent portion matches the original DN's parent
-  // If same parent, pass nullptr for newParent (rename in place)
+  std::string currentParent;
   auto dnComma = dn.find(',');
-  bool sameParent = (dnComma != std::string::npos) &&
-    (dn.substr(dnComma + 1) == newParent);
+  if (dnComma != std::string::npos) {
+    currentParent = dn.substr(dnComma + 1);
+  }
 
-  int rc = ldap_rename_s(handle->ld, dn.c_str(), newRDN.c_str(),
-    sameParent ? nullptr : newParent.c_str(), 1, nullptr, nullptr);
+  bool sameParent = newParent.empty() || currentParent == newParent;
+  const char* newParentPtr = sameParent ? nullptr : newParent.c_str();
+
+  int rc = ldap_rename_s(handle->ld, dn.c_str(), newRDN.c_str(), newParentPtr, 1, nullptr, nullptr);
   if (rc != LDAP_SUCCESS) {
     throw MakeLdapError(env, rc, "ldap_rename_s failed");
   }
@@ -496,14 +738,18 @@ Napi::Value Exop(const Napi::CallbackInfo& info) {
   auto handle = GetHandle(info);
   auto payload = info[1].As<Napi::Object>();
   std::string oid = payload.Get("oid").As<Napi::String>().Utf8Value();
+
   struct berval request{};
   struct berval* requestPtr = nullptr;
   std::string requestStorage;
   if (payload.Has("value") && !payload.Get("value").IsNull() && !payload.Get("value").IsUndefined()) {
-    requestStorage = payload.Get("value").ToString().Utf8Value();
-    request.bv_val = requestStorage.data();
-    request.bv_len = requestStorage.size();
-    requestPtr = &request;
+    std::vector<std::string> values = ReadByteStrings(payload.Get("value"));
+    if (!values.empty()) {
+      requestStorage = values.front();
+      request.bv_val = requestStorage.empty() ? nullptr : requestStorage.data();
+      request.bv_len = requestStorage.size();
+      requestPtr = &request;
+    }
   }
 
   struct berval* response = nullptr;

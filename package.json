@@ -12,16 +12,41 @@
       "require": "./index.cjs",
       "import": "./index.mjs",
       "types": "./types/index.d.ts"
+    },
+    "./ber": {
+      "require": "./ber.cjs",
+      "import": "./ber.mjs",
+      "types": "./types/ber/index.d.ts"
+    },
+    "./controls": {
+      "require": "./controls.cjs",
+      "import": "./controls.mjs",
+      "types": "./types/controls/index.d.ts"
+    },
+    "./dn": {
+      "require": "./dn.cjs",
+      "import": "./dn.mjs",
+      "types": "./types/dn/index.d.ts"
+    },
+    "./errors": {
+      "require": "./errors.cjs",
+      "import": "./errors.mjs",
+      "types": "./types/errors/index.d.ts"
+    },
+    "./filters": {
+      "require": "./filters.cjs",
+      "import": "./filters.mjs",
+      "types": "./types/filters/index.d.ts"
     }
   },
   "files": [
+    "*.cjs",
+    "*.mjs",
     "src/*.cjs",
     "types",
     "prebuilds",
     "binding.gyp",
     "native",
-    "index.cjs",
-    "index.mjs",
     "index.d.ts"
   ],
   "engines": {
@@ -32,9 +57,11 @@
     "build:native": "node scripts/build-native.cjs",
     "rebuild": "npm run build",
     "test": "npm run build:compat && npm run test:unit && npm run test:imports && npm run test:upstream",
+    "test:full": "npm run build && npm run test:unit && npm run test:imports && npm run test:upstream && npm run smoke && npm run test:integration:docker",
     "test:unit": "node scripts/run-unit-tests.cjs",
     "test:imports": "node scripts/run-import-tests.cjs",
     "test:integration": "node scripts/run-integration-tests.cjs",
+    "test:integration:docker": "node scripts/run-docker-tests.cjs",
     "smoke": "node examples/smoke-native.cjs",
     "build:compat": "tsc -p tsconfig.json",
     "test:upstream": "node scripts/run-upstream-direct.cjs",
@@ -42,7 +69,7 @@
     "prepack": "npm run build:compat",
     "test:integration:mockable": "node scripts/run-integration-tests.cjs",
     "release:verify": "npm run build:compat && npm run test:unit && npm run test:imports && npm run test:upstream && npm pack --dry-run",
-    "test:docker": "bash docker/openldap/tls/generate-certs.sh && docker compose up -d --wait && LDAP_DOCKER=1 node --test tests/integration/docker-openldap.integration.test.cjs",
+    "test:docker": "npm run build && npm run test:integration:docker",
     "docker:up": "bash docker/openldap/tls/generate-certs.sh && docker compose up -d --wait",
     "docker:down": "docker compose down -v",
     "docker:logs": "docker compose logs openldap"

@@ -13,13 +13,28 @@
       "cflags_cc": ["-fexceptions", "-frtti"],
       "conditions": [
         [
+          "OS=='mac'",
+          {
+            "libraries": [
+              "<!@(node scripts/detect-openldap-paths.cjs libs)",
+              "-lsasl2"
+            ],
+            "library_dirs": [
+              "<!@(node scripts/detect-openldap-paths.cjs lib)"
+            ]
+          }
+        ],
+        [
           "OS=='win'",
           {
             "libraries": ["-lldap", "-llber", "-lsasl2"],
             "library_dirs": [
               "<!@(node scripts/detect-openldap-paths.cjs lib)"
             ]
-          },
+          }
+        ],
+        [
+          "OS!='win' and OS!='mac'",
           {
             "libraries": ["-lldap", "-llber", "-lsasl2"]
           }

@@ -34,7 +34,7 @@ Implemented now:
 - `modifyDN()`
 - `exop()` including LDAP Who Am I (`1.3.6.1.4.1.4203.1.11.3`)
 - root exports for controls, filters, BER helpers, DN helpers, and postal address helpers
-- dist output compatible with CommonJS and ESM import tests
+- CommonJS and ESM import surface covered by import tests
 - a native loader that resolves local builds and staged `prebuilds/`
 - a GitHub Actions matrix for API compatibility on Linux/macOS/Windows plus native build jobs for Linux/macOS and an MSYS2-based Windows native job
 
@@ -91,8 +91,7 @@ The repository includes an MSYS2/UCRT64-based workflow. For local Windows source
 ## Build outputs
 
 - `build/Release/ldap_native.node` — native addon
-- `compat-cjs/` — generated compatibility/type bridge output from `npm run build:compat`
-- `dist/` — CJS/ESM/type outputs aligned with `ldapts` package imports
+- `types/` — generated declaration files from `src/types/`
 - `prebuilds/<platform-triple>/ldap_native.node` — staged prebuild layout
 
 ## Usage
@@ -148,35 +147,35 @@ For a fuller annotated tree and contributor guide, see [docs/REPOSITORY_LAYOUT.m
 ├─ .github/workflows/        CI and release automation
 ├─ docs/                     architecture, build, compatibility, testing, release notes
 ├─ examples/                 runnable smoke / usage examples
-├─ lib/                      JavaScript runtime layer, client wrapper, loader, mock backend
 ├─ native/                   Node-API addon backed by OpenLDAP libldap
+├─ prebuilds/                staged native binaries for publish / install
 ├─ scripts/                  build, packaging, and upstream-test runners
+├─ src/                      runtime implementation and type-declaration source
 ├─ tests/                    unit, parity, and integration tests
+├─ types/                    generated declaration output published with the package
 ├─ upstream/                 vendored upstream ldapts tests executed directly
-├─ upstream-src/             vendored upstream source reused for compatibility helpers
+├─ upstream-src/             vendored upstream source reused for helper parity
 ├─ binding.gyp               native addon build definition
 ├─ index.cjs|mjs|d.ts        public package entrypoints
-├─ package.json              exports, scripts, and publish metadata
-└─ tsconfig.compat.json      compatibility/type generation config
+└─ package.json              exports, scripts, and publish metadata
 
 Generated during build or release:
-- compat-cjs/
+- types/
 - build/
-- dist/
 - prebuilds/
 ```
 
 ## Build and packaging flow
 
 ```text
+src/types/**/*.ts -----------(tsc)--------------------------> types/**/*.d.ts
 native/addon.cc + binding.gyp --(node-gyp)------------------> build/Release/ldap_native.node
-tsconfig.compat.json ---------(tsc)-------------------------> compat-cjs/
-root entrypoints + lib/ + compat-cjs/ --(build-dist)-------> dist/
 build/Release/ldap_native.node --(create-prebuild)---------> prebuilds/<platform-triple>/
+root entrypoints + src/ + types/ ---------------------------> npm package contents
 release workflow artifacts ---------------------------------> assembled prebuilds/ for npm publish
 ```
 
-When changing behavior, prefer editing the source-of-truth layers (`native/`, `lib/`, scripts, tests, docs) instead of editing generated outputs by hand.
+When changing behavior, prefer editing the source-of-truth layers (`src/`, `native/`, scripts, tests, docs) instead of editing generated outputs by hand.
 
 ## Test matrix
 
@@ -186,13 +185,25 @@ Run package tests:
 npm test
 ```
 
+Run the current full local regression path:
+
+```bash
+npm run test:full
+```
+
 Run direct upstream coverage only:
 
 ```bash
 npm run test:upstream
 ```
 
-Run optional real OpenLDAP integration tests:
+Run Docker-backed integration coverage for the full `tests/integration/` directory:
+
+```bash
+npm run test:docker
+```
+
+Run optional real OpenLDAP integration tests against your own environment:
 
 ```bash
 LDAP_URL='ldap://127.0.0.1:389' \
