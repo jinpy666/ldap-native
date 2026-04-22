@@ -8,9 +8,7 @@ const nodeGypCli = require.resolve('node-gyp/bin/node-gyp.js');
 const nodedir = process.env.npm_config_nodedir || path.resolve(execPath, '..', '..');
 const env = { ...process.env };
 const isMsys2Windows = process.platform === 'win32' && Boolean(process.env.MSYSTEM);
-const args = [nodeGypCli, 'rebuild', `--nodedir=${nodedir}`];
 if (isMsys2Windows) {
-  args.push('--format=make');
   env.CC = env.CC || 'gcc';
   env.CXX = env.CXX || 'g++';
   env.MAKE = env.MAKE || 'make';
@@ -21,15 +19,39 @@ if (isMsys2Windows) {
 if (process.platform !== 'win32' || isMsys2Windows) {
   env.CXXFLAGS = [env.CXXFLAGS, '-fexceptions', '-frtti'].filter(Boolean).join(' ');
 }
-const result = spawnSync(execPath, args, {
-  stdio: 'inherit',
-  cwd: path.resolve(__dirname, '..'),
-  shell: false,
-  env,
-});
+const cwd = path.resolve(__dirname, '..');
 
-if (result.error) {
-  console.error(result.error);
+function runNodeGyp(args) {
+  const result = spawnSync(execPath, [nodeGypCli, ...args], {
+    stdio: 'inherit',
+    cwd,
+    shell: false,
+    env,
+  });
+
+  if (result.error) {
+    console.error(result.error);
+  }
+
+  return result;
 }
 
+if (isMsys2Windows) {
+  const steps = [
+    ['clean'],
+    ['configure', `--nodedir=${nodedir}`, '--', '-f', 'make'],
+    ['build'],
+  ];
+
+  for (const stepArgs of steps) {
+    const result = runNodeGyp(stepArgs);
+    if ((result.status ?? 1) !== 0) {
+      process.exit(result.status ?? 1);
+    }
+  }
+
+  process.exit(0);
+}
+
+const result = runNodeGyp(['rebuild', `--nodedir=${nodedir}`]);
 process.exit(result.status ?? 1);
