@@ -59,15 +59,31 @@ compose() {
   docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" "$@"
 }
 
+container_id_for() {
+  compose ps -a -q "$1" 2>/dev/null || true
+}
+
 capture_container_file() {
   local service="$1"
   local source_path="$2"
   local dest_path="$3"
   local container_id
 
-  container_id="$(compose ps -q "$service" 2>/dev/null || true)"
+  container_id="$(container_id_for "$service")"
   if [[ -n "$container_id" ]]; then
     docker cp "${container_id}:${source_path}" "$dest_path" >/dev/null 2>&1 || true
+  fi
+}
+
+capture_volume_file() {
+  local service="$1"
+  local source_path="$2"
+  local dest_path="$3"
+  local container_id
+
+  container_id="$(container_id_for "$service")"
+  if [[ -n "$container_id" ]]; then
+    docker run --rm --volumes-from "$container_id" busybox sh -c "cat '$source_path'" >"$dest_path" 2>/dev/null || true
   fi
 }
 
@@ -75,8 +91,12 @@ capture_artifacts() {
   compose logs "$FREEIPA_SERVICE" >"$ARTIFACT_DIR/freeipa.log" 2>&1 || true
   compose logs "$RUNNER_SERVICE" >"$ARTIFACT_DIR/runner.log" 2>&1 || true
 
-  capture_container_file "$FREEIPA_SERVICE" /var/log/ipaserver-install.log "$ARTIFACT_DIR/ipaserver-install.log"
-  capture_container_file "$FREEIPA_SERVICE" /var/log/ipaclient-install.log "$ARTIFACT_DIR/ipaclient-install.log"
+  # FreeIPA persists its installation logs under /data/var/log.
+  capture_volume_file "$FREEIPA_SERVICE" /data/var/log/ipaserver-install.log "$ARTIFACT_DIR/ipaserver-install.log"
+  capture_volume_file "$FREEIPA_SERVICE" /data/var/log/ipaclient-install.log "$ARTIFACT_DIR/ipaclient-install.log"
+  capture_volume_file "$FREEIPA_SERVICE" /data/var/log/ipa-server-configure-first.log "$ARTIFACT_DIR/ipa-server-configure-first.log"
+  capture_volume_file "$FREEIPA_SERVICE" /data/var/log/ipa-server-run.log "$ARTIFACT_DIR/ipa-server-run.log"
+
   capture_container_file "$FREEIPA_SERVICE" /var/log/httpd/error_log "$ARTIFACT_DIR/httpd-error.log"
   capture_container_file "$FREEIPA_SERVICE" /var/log/httpd/access_log "$ARTIFACT_DIR/httpd-access.log"
   capture_container_file "$FREEIPA_SERVICE" /var/log/krb5kdc.log "$ARTIFACT_DIR/krb5kdc.log"
@@ -114,11 +134,14 @@ write_report() {
 - \`runner.log\`
 - \`ipaserver-install.log\`
 - \`ipaclient-install.log\`
+- \`ipa-server-configure-first.log\`
+- \`ipa-server-run.log\`
 
 ## Notes
 
 - This lab is intended for Linux Docker hosts.
 - On macOS Docker Desktop, upstream FreeIPA container compatibility remains limited.
+- GitHub Actions Linux runners should enable Docker user namespace remapping for best FreeIPA compatibility.
 EOF
 }
 

@@ -189,6 +189,12 @@ jobs:
       GSSAPI_DOCKER_ARTIFACT_DIR: ${{ github.workspace }}/artifacts/gssapi-docker
     steps:
       - uses: actions/checkout@v4
+      - name: Configure Docker userns-remap for FreeIPA
+        run: |
+          echo -e "dockremap:$(id -u):1\ndockremap:200001:65535" | sudo tee -a /etc/subuid
+          echo -e "dockremap:$(id -g):1\ndockremap:200001:65535" | sudo tee -a /etc/subgid
+          echo '{ "userns-remap": "default" }' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
       - uses: actions/setup-node@v4
         with:
           node-version: 22

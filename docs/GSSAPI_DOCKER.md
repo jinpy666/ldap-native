@@ -156,6 +156,7 @@ docker compose -p ldap-native-gssapi -f docker-compose.gssapi.yml down -v
 
 这个 job 会在 Linux runner 上执行：
 
+- 配置 Docker `userns-remap`
 - `bash scripts/run-gssapi-docker-lab.sh`
 - 上传 `artifacts/gssapi-docker/` 全部产物
 
