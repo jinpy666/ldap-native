@@ -71,7 +71,7 @@ jobs:
           path: release-prebuilds/
 
   prebuild-macos-x64:
-    runs-on: macos-13
+    runs-on: macos-15-intel
     needs: verify-release
     steps:
       - uses: actions/checkout@v4
