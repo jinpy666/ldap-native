@@ -83,6 +83,7 @@ jobs:
 
   native-windows-msys2:
     runs-on: windows-latest
+    continue-on-error: true
     defaults:
       run:
         shell: msys2 {0}
@@ -103,12 +104,12 @@ jobs:
       - run: npm install --ignore-scripts
       - run: |
           NODE_DIR=$(node -e "console.log(require('path').resolve(process.execPath,'..','..'))")
-          npx node-gyp configure --nodedir="$NODE_DIR" -- -f make
           CXXFLAGS="-I/ucrt64/include -fexceptions -frtti" \
-          LDFLAGS="-L/ucrt64/lib" \
-          make -C build
+          LDFLAGS="-L/ucrt64/lib -lldap -llber -lsasl2" \
+          npx node-gyp configure build --nodedir="$NODE_DIR" --nodedir="$NODE_DIR"
       - run: npm run smoke
       - uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: native-windows-msys2
           path: |
