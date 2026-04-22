@@ -133,7 +133,6 @@ jobs:
             prebuilds/**
 
   gssapi-linux:
-    if: ${{ secrets.LDAP_URL != '' && secrets.LDAP_BASE_DN != '' && secrets.KRB5_PRINCIPAL != '' && (secrets.KRB5_PASSWORD != '' || secrets.KRB5_KEYTAB_B64 != '') }}
     runs-on: ubuntu-latest
     env:
       LDAP_URL: ${{ secrets.LDAP_URL }}
@@ -150,15 +149,33 @@ jobs:
       KRB5_KEYTAB_B64: ${{ secrets.KRB5_KEYTAB_B64 }}
       GSSAPI_ARTIFACT_DIR: ${{ github.workspace }}/artifacts/gssapi
     steps:
+      - id: gssapi-config
+        run: |
+          enabled=true
+          if [[ -z "${LDAP_URL}" || -z "${LDAP_BASE_DN}" || -z "${KRB5_PRINCIPAL}" ]]; then
+            enabled=false
+          fi
+          if [[ -z "${KRB5_PASSWORD}" && -z "${KRB5_KEYTAB_B64}" ]]; then
+            enabled=false
+          fi
+          echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
+        if: steps.gssapi-config.outputs.enabled == 'true'
       - uses: actions/setup-node@v4
+        if: steps.gssapi-config.outputs.enabled == 'true'
         with:
           node-version: 22
           cache: npm
-      - run: sudo apt-get update && sudo apt-get install -y libldap2-dev libsasl2-dev libsasl2-modules-gssapi-mit krb5-user ldap-utils tshark
-      - run: npm install
-      - run: chmod +x scripts/verify-gssapi-rhel9.sh scripts/run-gssapi-ci.sh
-      - run: bash scripts/run-gssapi-ci.sh
+      - if: steps.gssapi-config.outputs.enabled == 'true'
+        run: sudo apt-get update && sudo apt-get install -y libldap2-dev libsasl2-dev libsasl2-modules-gssapi-mit krb5-user ldap-utils tshark
+      - if: steps.gssapi-config.outputs.enabled == 'true'
+        run: npm install
+      - if: steps.gssapi-config.outputs.enabled == 'true'
+        run: chmod +x scripts/verify-gssapi-rhel9.sh scripts/run-gssapi-ci.sh
+      - if: steps.gssapi-config.outputs.enabled == 'true'
+        run: bash scripts/run-gssapi-ci.sh
+      - if: steps.gssapi-config.outputs.enabled != 'true'
+        run: echo "Skipping gssapi-linux because required secrets are not configured."
       - if: always()
         uses: actions/upload-artifact@v4
         with:
