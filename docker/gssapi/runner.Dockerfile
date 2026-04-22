@@ -4,6 +4,7 @@ RUN dnf module reset -y nodejs \
   && dnf module enable -y nodejs:20 \
   && dnf install -y \
     nodejs \
+    nodejs-devel \
     openldap-clients \
     openldap-devel \
     cyrus-sasl-devel \
