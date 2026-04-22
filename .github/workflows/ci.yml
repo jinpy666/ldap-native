@@ -100,16 +100,13 @@ jobs:
             mingw-w64-ucrt-x86_64-openldap
             mingw-w64-ucrt-x86_64-cyrus-sasl
             make
+      - run: npm install --ignore-scripts
       - run: |
-          export CFLAGS="-I/ucrt64/include"
-          export CXXFLAGS="-I/ucrt64/include -fexceptions -frtti"
-          export LDFLAGS="-L/ucrt64/lib"
-          npm install --ignore-scripts
-      - run: |
-          export CFLAGS="-I/ucrt64/include"
-          export CXXFLAGS="-I/ucrt64/include -fexceptions -frtti"
-          export LDFLAGS="-L/ucrt64/lib"
-          npx node-gyp rebuild --nodedir=$(node -e "console.log(require('path').resolve(process.execPath,'..','..'))") --make=make
+          NODE_DIR=$(node -e "console.log(require('path').resolve(process.execPath,'..','..'))")
+          npx node-gyp configure --nodedir="$NODE_DIR" -- -f make
+          CXXFLAGS="-I/ucrt64/include -fexceptions -frtti" \
+          LDFLAGS="-L/ucrt64/lib" \
+          make -C build
       - run: npm run smoke
       - uses: actions/upload-artifact@v4
         with:
