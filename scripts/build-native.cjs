@@ -20,11 +20,16 @@ if (isMsys2Windows) {
 if (process.platform !== 'win32' || isMsys2Windows) {
   env.CXXFLAGS = [env.CXXFLAGS, '-fexceptions', '-frtti'].filter(Boolean).join(' ');
 }
-const result = spawnSync(/^win/.test(process.platform) ? 'npx.cmd' : 'npx', args, {
+const npxCommand = /^win/.test(process.platform) && !isMsys2Windows ? 'npx.cmd' : 'npx';
+const result = spawnSync(npxCommand, args, {
   stdio: 'inherit',
   cwd: path.resolve(__dirname, '..'),
   shell: false,
   env,
 });
+
+if (result.error) {
+  console.error(result.error);
+}
 
 process.exit(result.status ?? 1);
