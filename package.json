@@ -1,6 +1,6 @@
 {
   "name": "ldap-native",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "ldapts-compatible Node.js client backed by OpenLDAP libldap with Kerberos/GSSAPI support",
   "license": "MIT",
   "type": "commonjs",
