@@ -9,8 +9,12 @@
 #endif
 #include <windows.h>
 #include <wincrypt.h>
-#include <winber.h>
 #include <winldap.h>
+
+// winldap.h exposes BerElement but does not declare ber_free. Pulling in
+// winber.h causes conflicting BINVAL/BERVAL declarations under MSVC, so
+// declare the single cleanup function we need here.
+extern "C" VOID ber_free(BerElement* pBerElement, INT fbuf);
 #else
 #include <ldap.h>
 #endif
