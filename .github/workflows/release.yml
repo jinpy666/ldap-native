@@ -154,6 +154,7 @@ jobs:
       - prebuild-macos-x64
       - prebuild-macos-arm64
       - prebuild-windows-x64
+    environment: NPM_TOKEN
     env:
       NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN || vars.NPM_TOKEN }}
     permissions:
