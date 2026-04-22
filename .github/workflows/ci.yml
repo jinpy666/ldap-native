@@ -102,11 +102,7 @@ jobs:
             mingw-w64-ucrt-x86_64-cyrus-sasl
             make
       - run: npm install --ignore-scripts
-      - run: |
-          NODE_DIR=$(node -e "console.log(require('path').resolve(process.execPath,'..','..'))")
-          CXXFLAGS="-I/ucrt64/include -fexceptions -frtti" \
-          LDFLAGS="-L/ucrt64/lib -lldap -llber -lsasl2" \
-          npx node-gyp configure build --nodedir="$NODE_DIR" --nodedir="$NODE_DIR"
+      - run: npm run build:native
       - run: npm run smoke
       - uses: actions/upload-artifact@v4
         if: success()
