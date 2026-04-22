@@ -44,7 +44,7 @@ if (isMsys2Windows) {
     // Let node-gyp read MSYS2's process.config so it keeps the MinGW-friendly
     // import library path (for example libnode.dll.a) instead of synthesizing
     // an MSVC-style node.lib path from --nodedir.
-    ['configure', '--', '-f', 'make'],
+    ['configure', '--force-process-config', '--', '-f', 'make'],
     ['build'],
   ];
 
