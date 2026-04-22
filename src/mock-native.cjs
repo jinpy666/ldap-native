@@ -190,6 +190,15 @@ async function unbind(handle) {
   handles.delete(handle?.id);
 }
 
+function __getState(handle) {
+  const state = ensure(handle);
+  return {
+    ...state,
+    bind: state.bind ? { ...state.bind } : null,
+    tlsOptions: state.tlsOptions ? { ...state.tlsOptions } : undefined,
+  };
+}
+
 module.exports = {
   connect,
   startTLS,
@@ -203,4 +212,5 @@ module.exports = {
   modifyDN,
   exop,
   unbind,
+  __getState,
 };

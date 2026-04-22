@@ -1,0 +1,77 @@
+services:
+  freeipa:
+    image: quay.io/freeipa/freeipa-server:rocky-9
+    container_name: ldap-native-freeipa
+    hostname: ipa.example.test
+    privileged: true
+    read_only: true
+    tty: true
+    environment:
+      PASSWORD: "Secret123"
+      IPA_SERVER_IP: "no-update"
+    security_opt:
+      - seccomp=unconfined
+    cap_add:
+      - NET_ADMIN
+    cgroup: host
+    command:
+      - ipa-server-install
+      - -U
+      - --realm=EXAMPLE.TEST
+      - --domain=example.test
+      - --ds-password=Secret123
+      - --admin-password=Secret123
+      - --no-ntp
+      - --skip-mem-check
+    tmpfs:
+      - /run
+      - /run/lock
+      - /tmp
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: "0"
+    volumes:
+      - freeipa-data:/data
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    networks:
+      default:
+        aliases:
+          - ipa.example.test
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "printf '%s\\n' \"$$PASSWORD\" | kinit admin >/dev/null 2>&1 && ldapsearch -Y GSSAPI -H ldap://ipa.example.test -b cn=users,cn=accounts,dc=example,dc=test uid=admin dn >/dev/null 2>&1",
+        ]
+      interval: 20s
+      timeout: 15s
+      retries: 20
+      start_period: 600s
+
+  gssapi-runner:
+    build:
+      context: .
+      dockerfile: docker/gssapi/runner.Dockerfile
+    container_name: ldap-native-gssapi-runner
+    hostname: gssapi-runner.example.test
+    init: true
+    depends_on:
+      freeipa:
+        condition: service_healthy
+    working_dir: /workspace
+    command: ["bash", "-lc", "sleep infinity"]
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - .:/workspace
+      - gssapi-node-modules:/workspace/node_modules
+      - gssapi-build:/workspace/build
+      - gssapi-prebuilds:/workspace/prebuilds
+      - gssapi-types:/workspace/types
+
+volumes:
+  freeipa-data:
+  gssapi-node-modules:
+  gssapi-build:
+  gssapi-prebuilds:
+  gssapi-types:

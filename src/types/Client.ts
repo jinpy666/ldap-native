@@ -36,6 +36,12 @@ export interface SearchResult {
 
 export interface SaslOptions {
   mechanism?: string;
+  credential?: string | Buffer;
+  user?: string;
+  password?: string;
+  realm?: string;
+  proxyUser?: string;
+  securityProperties?: string;
   [key: string]: unknown;
 }
 
@@ -58,6 +64,7 @@ export declare class Client {
 
   public constructor(options: ClientOptions);
   public bind(dnOrSaslMechanism: string, password?: string | Buffer, controls?: Control | Control[]): Promise<void>;
+  public saslBind(options?: SaslOptions, controls?: Control | Control[]): Promise<void>;
   public startTLS(options?: ClientOptions['tlsOptions'], controls?: Control | Control[]): Promise<void>;
   public search(baseDN: string, options?: SearchOptions, controls?: Control | Control[]): Promise<SearchResult>;
   public searchPaginated(

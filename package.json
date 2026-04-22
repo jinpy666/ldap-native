@@ -70,6 +70,7 @@
     "ci": "npm run build:compat && npm run test:unit && npm run test:imports && npm run test:upstream",
     "prepack": "npm run build:compat",
     "test:integration:mockable": "node scripts/run-integration-tests.cjs",
+    "test:gssapi:docker": "bash scripts/run-gssapi-docker-lab.sh",
     "release:verify": "npm run build:compat && npm run test:unit && npm run test:imports && npm run test:upstream && npm pack --dry-run",
     "test:docker": "npm run build && npm run test:integration:docker",
     "docker:up": "bash docker/openldap/tls/generate-certs.sh && docker compose up -d --wait",

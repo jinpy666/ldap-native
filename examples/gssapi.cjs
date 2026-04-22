@@ -11,7 +11,7 @@ async function main() {
     if (process.env.LDAP_STARTTLS === '1') {
       await client.startTLS(process.env.LDAP_CA_FILE ? { caFile: process.env.LDAP_CA_FILE } : undefined);
     }
-    await client.bind('GSSAPI');
+    await client.saslBind();
     const response = await client.exop('1.3.6.1.4.1.4203.1.11.3');
     console.log('whoami', Buffer.isBuffer(response.value) ? response.value.toString('utf8') : response.value);
   } finally {

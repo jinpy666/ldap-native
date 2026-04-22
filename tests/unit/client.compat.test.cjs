@@ -5,6 +5,7 @@ process.env.LDAP_NATIVE_USE_MOCK = '1';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { Client, PagedResultsControl, ServerSideSortingRequestControl } = require('../../index.cjs');
+const mockNative = require('../../src/mock-native.cjs');
 
 test('Client simple bind + search + unbind', async () => {
   const client = new Client({ url: 'ldap://127.0.0.1:389' });
@@ -24,6 +25,75 @@ test('Client SASL bind supports GSSAPI entry point', async () => {
   await client.bind('GSSAPI');
   const whoami = await client.exop('1.3.6.1.4.1.4203.1.11.3');
   assert.equal(Buffer.isBuffer(whoami.value), true);
+  await client.unbind();
+});
+
+test('Client saslBind forwards interactive SASL defaults', async () => {
+  const client = new Client({ url: 'ldap://127.0.0.1:389' });
+  await client.saslBind({
+    mechanism: 'PLAIN',
+    user: 'test_user',
+    password: 'secret',
+    realm: 'EXAMPLE.COM',
+    proxyUser: 'u:test_admin',
+    securityProperties: 'none',
+  });
+  const state = mockNative.__getState(client.nativeHandle);
+  assert.deepEqual(state.bind, {
+    type: 'sasl',
+    mechanism: 'PLAIN',
+    user: 'test_user',
+    password: 'secret',
+    realm: 'EXAMPLE.COM',
+    proxyUser: 'u:test_admin',
+    securityProperties: 'none',
+    controls: [],
+  });
+  await client.unbind();
+});
+
+test('Client saslBind accepts napi-ldap style aliases', async () => {
+  const client = new Client({ url: 'ldap://127.0.0.1:389' });
+  await client.saslBind({
+    mechanism: 'PLAIN',
+    user: 'alias_user',
+    password: 'alias_secret',
+    proxyuser: 'u:alias_proxy',
+    securityproperties: 'minssf=0,maxssf=0',
+  });
+  const state = mockNative.__getState(client.nativeHandle);
+  assert.deepEqual(state.bind, {
+    type: 'sasl',
+    mechanism: 'PLAIN',
+    user: 'alias_user',
+    password: 'alias_secret',
+    proxyUser: 'u:alias_proxy',
+    securityProperties: 'minssf=0,maxssf=0',
+    controls: [],
+  });
+  await client.unbind();
+});
+
+test('Client bind shorthand reuses configured SASL defaults', async () => {
+  const client = new Client({
+    url: 'ldap://127.0.0.1:389',
+    sasl: {
+      mechanism: 'GSSAPI',
+      user: 'svc_ldap',
+      realm: 'EXAMPLE.COM',
+      proxyUser: 'u:svc_proxy',
+    },
+  });
+  await client.bind('GSSAPI');
+  const state = mockNative.__getState(client.nativeHandle);
+  assert.deepEqual(state.bind, {
+    type: 'sasl',
+    mechanism: 'GSSAPI',
+    user: 'svc_ldap',
+    realm: 'EXAMPLE.COM',
+    proxyUser: 'u:svc_proxy',
+    controls: [],
+  });
   await client.unbind();
 });
 

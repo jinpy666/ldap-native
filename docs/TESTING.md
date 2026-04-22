@@ -95,7 +95,25 @@ export LDAP_STARTTLS='0'
 export LDAP_GSSAPI='1'
 export KRB5_CONFIG='/etc/krb5.conf'
 export KRB5CCNAME='FILE:/tmp/krb5cc_1000'
+
+# Optional for generic SASL coverage:
+export LDAP_SASL_MECHANISM='PLAIN'
+export LDAP_SASL_USER='test_user'
+export LDAP_SASL_PASSWORD='secret'
+export LDAP_SASL_REALM='EXAMPLE.COM'
+export LDAP_SASL_PROXY_USER='u:test_admin'
+export LDAP_SASL_SECURITY_PROPERTIES='none'
 ```
+
+For GSSAPI specifically, prefer:
+
+```bash
+export LDAP_GSSAPI='1'
+unset LDAP_SASL_USER LDAP_SASL_PASSWORD LDAP_SASL_REALM LDAP_SASL_PROXY_USER LDAP_SASL_SECURITY_PROPERTIES
+```
+
+That path exercises `client.saslBind()` with default Kerberos credentials from
+the current ticket cache, which is the closest match to `ldapsearch -Y GSSAPI`.
 
 Then run:
 
@@ -103,4 +121,74 @@ Then run:
 npm run test:integration
 ```
 
+For a focused RHEL 9 GSSAPI comparison against `ldapsearch -Y GSSAPI`, use:
+
+```bash
+bash scripts/verify-gssapi-rhel9.sh
+```
+
+If you want packet capture for first-bind comparison:
+
+```bash
+LDAP_CAPTURE=1 bash scripts/verify-gssapi-rhel9.sh
+```
+
+If you do not have an existing LDAP / Kerberos environment, you can boot the
+self-contained Docker lab instead:
+
+```bash
+npm run test:gssapi:docker
+```
+
+That path brings up FreeIPA plus a Rocky Linux 9 runner container, acquires a
+Kerberos ticket with the built-in lab principal, runs both `ldapsearch` and
+`client.saslBind()`, and saves `ldapsearch.out`, `ldap-native.out`, and a
+`ldap-gssapi.pcap` capture under `artifacts/gssapi-docker/`.
+
 If you just want the repo-managed Docker path, `npm run test:docker` now brings the container up, runs the entire `tests/integration/` directory against it, and tears it down automatically.
+
+## CI coverage
+
+The GitHub Actions CI now covers three layers:
+
+1. API compatibility and mock-backed parity tests across Linux, macOS, and Windows
+2. native build + smoke coverage on Linux, macOS, and Windows
+3. Docker-backed OpenLDAP integration coverage on Linux
+
+There is also an optional Linux GSSAPI job in CI. It only runs when the
+repository secrets for a real Kerberos / LDAP environment are configured.
+
+Recommended secrets:
+
+```bash
+LDAP_URL
+LDAP_BASE_DN
+KRB5_PRINCIPAL
+```
+
+One of:
+
+```bash
+KRB5_PASSWORD
+KRB5_KEYTAB_B64
+```
+
+Optional:
+
+```bash
+LDAP_CA_FILE
+LDAP_STARTTLS
+KRB5_CONFIG
+```
+
+When those secrets are present, CI runs `scripts/run-gssapi-ci.sh`, which:
+
+- acquires Kerberos credentials
+- runs `ldapsearch -Y GSSAPI`
+- runs `ldap-native` via `client.saslBind()`
+- captures traffic to a `.pcap`
+- uploads logs and capture artifacts for inspection
+
+For the full GitHub Actions secret setup checklist, see [CI_GSSAPI.md](./CI_GSSAPI.md).
+
+For the self-contained Dockerized GSSAPI lab, see [GSSAPI_DOCKER.md](./GSSAPI_DOCKER.md).

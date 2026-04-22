@@ -15,6 +15,14 @@ function getConfig() {
       bindPassword: 'admin',
       baseDN: 'dc=example,dc=com',
       caFilePath: path.join(ROOT, 'docker', 'openldap', 'tls', 'ca.crt'),
+      sasl: {
+        mechanism: process.env.LDAP_SASL_MECHANISM || null,
+        user: process.env.LDAP_SASL_USER || null,
+        password: process.env.LDAP_SASL_PASSWORD || null,
+        realm: process.env.LDAP_SASL_REALM || null,
+        proxyUser: process.env.LDAP_SASL_PROXY_USER || null,
+        securityProperties: process.env.LDAP_SASL_SECURITY_PROPERTIES || null,
+      },
     };
   }
   return {
@@ -24,6 +32,14 @@ function getConfig() {
     bindPassword: process.env.LDAP_BIND_PASSWORD,
     baseDN: process.env.LDAP_BASE_DN,
     caFilePath: process.env.LDAP_CA_FILE || null,
+    sasl: {
+      mechanism: process.env.LDAP_SASL_MECHANISM || null,
+      user: process.env.LDAP_SASL_USER || null,
+      password: process.env.LDAP_SASL_PASSWORD || null,
+      realm: process.env.LDAP_SASL_REALM || null,
+      proxyUser: process.env.LDAP_SASL_PROXY_USER || null,
+      securityProperties: process.env.LDAP_SASL_SECURITY_PROPERTIES || null,
+    },
   };
 }
 

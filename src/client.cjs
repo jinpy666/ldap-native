@@ -183,6 +183,30 @@ function cleanupTempPaths(tempPaths) {
   tempPaths.clear();
 }
 
+function normalizeSaslOptions(saslOptions = {}, mechanism, credential) {
+  const merged = { ...(saslOptions ?? {}) };
+  if (mechanism !== undefined) {
+    merged.mechanism = mechanism;
+  }
+  if (credential !== undefined) {
+    merged.credential = credential;
+  }
+
+  const normalized = {};
+  if (merged.mechanism != null) normalized.mechanism = String(merged.mechanism).toUpperCase();
+  if (merged.credential != null) normalized.credential = merged.credential;
+  if (merged.user != null) normalized.user = String(merged.user);
+  if (merged.password != null) normalized.password = String(merged.password);
+  if (merged.realm != null) normalized.realm = String(merged.realm);
+  if (merged.proxyUser != null) normalized.proxyUser = String(merged.proxyUser);
+  if (merged.proxyuser != null && normalized.proxyUser == null) normalized.proxyUser = String(merged.proxyuser);
+  if (merged.securityProperties != null) normalized.securityProperties = String(merged.securityProperties);
+  if (merged.securityproperties != null && normalized.securityProperties == null) {
+    normalized.securityProperties = String(merged.securityproperties);
+  }
+  return normalized;
+}
+
 async function runSearch(nativeHandle, baseDN, options, controls) {
   return wrapNativeCall(() => native.search(nativeHandle, {
     baseDN,
@@ -230,16 +254,32 @@ class Client {
     const encodedControls = encodeControls(controls);
     if (['PLAIN', 'EXTERNAL', 'GSSAPI'].includes(maybeMechanism)) {
       await wrapNativeCall(() => native.bindSasl(this.nativeHandle, {
-        mechanism: maybeMechanism,
-        credential: password ?? null,
+        ...normalizeSaslOptions(this.options.sasl, maybeMechanism, password ?? null),
         controls: encodedControls,
-        sasl: this.options.sasl ?? null,
       }));
       return;
     }
     await wrapNativeCall(() => native.bindSimple(this.nativeHandle, {
       dn: dnOrSaslMechanism,
       password: password ?? '',
+      controls: encodedControls,
+    }));
+  }
+
+  async saslBind(options, controls) {
+    const encodedControls = encodeControls(controls);
+    const normalized = normalizeSaslOptions(
+      this.options.sasl,
+      options?.mechanism,
+      options?.credential,
+    );
+    const merged = {
+      ...normalized,
+      ...normalizeSaslOptions(options),
+    };
+
+    await wrapNativeCall(() => native.bindSasl(this.nativeHandle, {
+      ...merged,
       controls: encodedControls,
     }));
   }

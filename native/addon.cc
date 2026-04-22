@@ -17,6 +17,7 @@
 extern "C" VOID ber_free(BerElement* pBerElement, INT fbuf);
 #else
 #include <ldap.h>
+#include <sasl/sasl.h>
 #endif
 
 #include <algorithm>
@@ -98,6 +99,47 @@ const char* PagedResultsControlOid() {
   return LDAP_CONTROL_PAGEDRESULTS;
 }
 
+struct SaslDefaults {
+  std::string user;
+  std::string password;
+  std::string realm;
+  std::string proxyUser;
+};
+
+int SaslInteract(LDAP* /* ld */, unsigned /* flags */, void* defaultsVoid, void* interactVoid) {
+  auto* defaults = static_cast<SaslDefaults*>(defaultsVoid);
+  auto* interact = static_cast<sasl_interact_t*>(interactVoid);
+
+  while (interact != nullptr && interact->id != SASL_CB_LIST_END) {
+    const char* value = interact->defresult;
+
+    if (defaults != nullptr) {
+      switch (interact->id) {
+        case SASL_CB_AUTHNAME:
+          value = defaults->user.empty() ? interact->defresult : defaults->user.c_str();
+          break;
+        case SASL_CB_PASS:
+          value = defaults->password.empty() ? interact->defresult : defaults->password.c_str();
+          break;
+        case SASL_CB_GETREALM:
+          value = defaults->realm.empty() ? interact->defresult : defaults->realm.c_str();
+          break;
+        case SASL_CB_USER:
+          value = defaults->proxyUser.empty() ? interact->defresult : defaults->proxyUser.c_str();
+          break;
+        default:
+          break;
+      }
+    }
+
+    interact->result = value != nullptr ? value : "";
+    interact->len = std::strlen(static_cast<const char*>(interact->result));
+    ++interact;
+  }
+
+  return LDAP_SUCCESS;
+}
+
 #endif
 
 std::shared_ptr<Handle> GetHandle(const Napi::CallbackInfo& info) {
@@ -133,6 +175,13 @@ std::string ReadUtf8String(const Napi::Object& object, const char* key, const st
   auto value = object.Get(key);
   if (value.IsUndefined() || value.IsNull()) return fallback;
   return value.ToString().Utf8Value();
+}
+
+std::string ReadOptionalUtf8String(const Napi::Object& object, const char* key) {
+  if (!object.Has(key)) return "";
+  auto value = object.Get(key);
+  if (value.IsUndefined() || value.IsNull() || !value.IsString()) return "";
+  return value.As<Napi::String>().Utf8Value();
 }
 
 bool ReadBoolean(const Napi::Object& object, const char* key, bool fallback) {
@@ -492,9 +541,8 @@ Napi::Value BindSasl(const Napi::CallbackInfo& info) {
   auto env = info.Env();
   auto handle = GetHandle(info);
   auto payload = info[1].As<Napi::Object>();
-  std::string mechanism = payload.Get("mechanism").As<Napi::String>().Utf8Value();
-
-  const char* mech = mechanism.c_str();
+  std::string mechanism = ReadOptionalUtf8String(payload, "mechanism");
+  const char* mech = mechanism.empty() ? nullptr : mechanism.c_str();
   struct berval* servercredp = nullptr;
   struct berval cred{};
   struct berval* credPtr = nullptr;
@@ -511,6 +559,45 @@ Napi::Value BindSasl(const Napi::CallbackInfo& info) {
     cred.bv_len = credStorage.size();
     credPtr = &cred;
   }
+
+#ifndef _WIN32
+  SaslDefaults defaults{
+    ReadOptionalUtf8String(payload, "user"),
+    ReadOptionalUtf8String(payload, "password"),
+    ReadOptionalUtf8String(payload, "realm"),
+    ReadOptionalUtf8String(payload, "proxyUser"),
+  };
+  bool hasInteractiveDefaults =
+    !defaults.user.empty() ||
+    !defaults.password.empty() ||
+    !defaults.realm.empty() ||
+    !defaults.proxyUser.empty();
+
+  std::string securityProperties = ReadOptionalUtf8String(payload, "securityProperties");
+  if (!securityProperties.empty() &&
+      ldap_set_option(handle->ld, LDAP_OPT_X_SASL_SECPROPS, securityProperties.c_str()) != LDAP_OPT_SUCCESS) {
+    throw MakeOptionError(env, "ldap_set_option failed for LDAP_OPT_X_SASL_SECPROPS");
+  }
+
+  // GSSAPI is usually negotiated through the Cyrus SASL client machinery.
+  // ldapsearch uses ldap_sasl_interactive_bind_s() for this path, which
+  // generates the initial token instead of sending only the mechanism name.
+  if (credPtr == nullptr && (mechanism.empty() || mechanism == "GSSAPI" || hasInteractiveDefaults)) {
+    int rc = ldap_sasl_interactive_bind_s(
+      handle->ld,
+      nullptr,
+      mech,
+      nullptr,
+      nullptr,
+      LDAP_SASL_QUIET,
+      hasInteractiveDefaults ? SaslInteract : nullptr,
+      hasInteractiveDefaults ? &defaults : nullptr);
+    if (rc != LDAP_SUCCESS) {
+      throw MakeLdapError(env, rc, "SASL interactive bind failed");
+    }
+    return env.Undefined();
+  }
+#endif
 
   int rc = ldap_sasl_bind_s(
     handle->ld,

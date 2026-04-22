@@ -6,6 +6,7 @@ prebuilds/
 *.tgz
 npm-debug.log*
 .omc/
+artifacts/
 
 # Docker TLS certs
 docker/openldap/tls/*.crt

@@ -113,7 +113,9 @@ Windows source builds use the system `Wldap32` SDK via MSVC rather than OpenLDAP
 
 ### GSSAPI and Kerberos environments
 
-If your target environment uses `bind('GSSAPI')`, the base LDAP and SASL libraries are not enough on their own. You also need the platform GSSAPI plugin and Kerberos client tooling.
+If your target environment uses `saslBind()` for GSSAPI, or the shorthand
+`bind('GSSAPI')`, the base LDAP and SASL libraries are not enough on their own.
+You also need the platform GSSAPI plugin and Kerberos client tooling.
 
 Typical extra packages:
 
@@ -360,7 +362,7 @@ const client = new Client({
 });
 
 await client.startTLS({ caFile: '/etc/ssl/certs/ldap-ca.pem' });
-await client.bind('GSSAPI');
+await client.saslBind();
 ```
 
 See [KERBEROS.md](./KERBEROS.md) for environment requirements and platform notes.

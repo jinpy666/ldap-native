@@ -226,10 +226,43 @@ const client = new Client({
 });
 
 await client.startTLS({ caFile: '/etc/ssl/certs/ldap-ca.pem' });
-await client.bind('GSSAPI');
+await client.saslBind();
 
 const whoami = await client.exop('1.3.6.1.4.1.4203.1.11.3');
 console.log(Buffer.isBuffer(whoami.value) ? whoami.value.toString('utf8') : whoami.value);
+
+await client.unbind();
+```
+
+`bind('GSSAPI')` remains available as a migration-friendly shorthand. Use
+`saslBind()` when you want behavior closer to `ldapsearch -Y GSSAPI` or need
+to pass SASL-specific defaults such as auth name, realm, proxy user, or
+security properties.
+
+For a RHEL 9 oriented end-to-end example including Kerberos ticket acquisition,
+TLS, and `ldapsearch` comparison, see:
+
+- [docs/wiki/KERBEROS_TLS_GSSAPI_EXAMPLE.md](docs/wiki/KERBEROS_TLS_GSSAPI_EXAMPLE.md)
+- [docs/GSSAPI_DOCKER.md](docs/GSSAPI_DOCKER.md)
+
+### Advanced SASL bind
+
+```js
+const { Client } = require('ldap-native');
+
+const client = new Client({
+  url: 'ldap://ldap.example.com:389',
+});
+
+await client.startTLS({ caFile: '/etc/ssl/certs/ldap-ca.pem' });
+await client.saslBind({
+  mechanism: 'PLAIN',
+  user: 'test_user',
+  password: 'secret',
+  realm: 'EXAMPLE.COM',
+  proxyUser: 'u:test_admin',
+  securityProperties: 'none',
+});
 
 await client.unbind();
 ```

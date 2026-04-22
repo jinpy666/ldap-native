@@ -31,6 +31,22 @@ test('upstream parity: bind with EXTERNAL mechanism resolves', async () => {
   await client.unbind();
 });
 
+test('upstream parity: saslBind with default credentials resolves', async () => {
+  const client = new Client({ url: 'ldap://127.0.0.1:389', sasl: { mechanism: 'GSSAPI' } });
+  await client.saslBind();
+  await client.unbind();
+});
+
+test('upstream parity: saslBind accepts explicit SASL options object', async () => {
+  const client = new Client({ url: 'ldap://127.0.0.1:389' });
+  await client.saslBind({
+    mechanism: 'PLAIN',
+    user: 'test_user',
+    password: 'secret',
+  });
+  await client.unbind();
+});
+
 test('upstream parity: search returns searchEntries/searchReferences shape', async () => {
   const client = new Client({ url: 'ldap://127.0.0.1:389' });
   const result = await client.search('dc=example,dc=com', {
