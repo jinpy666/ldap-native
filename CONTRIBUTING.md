@@ -16,7 +16,7 @@
 - Keep the public API migration-friendly for `ldapts` consumers.
 - Document any behavior that intentionally diverges from upstream private internals.
 - If native code changes, mention platform implications and build prerequisites.
-- If release automation changes, update `docs/NPM_PUBLISH.md` and `docs/PREBUILDS.md`.
+- If release automation changes, update `docs/PREBUILDS.md` and `.github/workflows/release.yml`.
 
 ## Commit guidance
 

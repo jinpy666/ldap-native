@@ -1,7 +1,7 @@
 {
   "name": "ldap-native",
-  "version": "0.1.1",
-  "description": "ldapts-compatible Node.js client backed by OpenLDAP libldap with Kerberos/GSSAPI support",
+  "version": "0.1.2",
+  "description": "Native Node.js LDAP client for OpenLDAP and Active Directory, ldapts-compatible with SASL/Kerberos/GSSAPI support",
   "license": "MIT",
   "type": "commonjs",
   "main": "./index.cjs",
@@ -78,11 +78,23 @@
   },
   "keywords": [
     "ldap",
+    "ldap-client",
+    "node-ldap",
+    "nodejs",
     "openldap",
+    "active-directory",
+    "activedirectory",
     "kerberos",
     "gssapi",
+    "sasl",
     "napi",
-    "ldapts"
+    "native-addon",
+    "ldapts",
+    "typescript",
+    "authentication",
+    "iam",
+    "directory-services",
+    "enterprise"
   ],
   "publishConfig": {
     "access": "public",

@@ -1,14 +1,47 @@
 # ldap-native
 
-A `ldapts`-compatible Node.js LDAP client backed by OpenLDAP `libldap`, with SASL and Kerberos/GSSAPI entry points.
+[![npm version](https://img.shields.io/npm/v/ldap-native.svg)](https://www.npmjs.com/package/ldap-native)
+[![CI](https://github.com/jinpy666/ldap-native/actions/workflows/ci.yml/badge.svg)](https://github.com/jinpy666/ldap-native/actions/workflows/ci.yml)
+[![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-`ldap-native` exists for teams that want to keep the familiar `ldapts` package surface while replacing the original socket/BER transport with a native addon. This repository therefore combines three concerns in one place:
+Native Node.js LDAP client for OpenLDAP and Active Directory environments, with an API designed to stay close to [`ldapts`](https://github.com/ldapts/ldapts). `ldap-native` replaces the JavaScript socket/BER transport with a Node-API addon backed by OpenLDAP `libldap`, while keeping the familiar `Client`-centric developer experience and adding SASL / Kerberos / GSSAPI entry points.
+
+This package is aimed at infrastructure and platform teams that need a migration-friendly LDAP client for Node.js services: internal authentication, enterprise IAM, directory lookups, account sync jobs, SSO-adjacent integrations, and other server-side directory workflows where native LDAP support matters.
+
+## Why `ldap-native`
+
+- **Node.js LDAP client with native OpenLDAP bindings** instead of a pure JavaScript transport layer
+- **`ldapts`-compatible API shape** for lower-friction migration from existing TypeScript or JavaScript codebases
+- **SASL, Kerberos, and GSSAPI bind support** for enterprise directory environments
+- **CommonJS, ESM, and TypeScript declarations** for modern Node package consumption
+- **OpenLDAP / Active Directory migration focus** rather than low-level protocol experimentation
+- **Cross-platform packaging path** with source builds today and staged prebuild publication support
+
+## Install
+
+```bash
+npm install ldap-native
+```
+
+If a matching prebuild is available for your platform, install uses it. Otherwise the package falls back to a local native build against the system LDAP client libraries.
+
+## Ideal use cases
+
+- Replace `ldapts` while keeping nearly the same public `Client` API
+- Standardize Node.js LDAP access across internal services
+- Talk to OpenLDAP, Active Directory, or Kerberos-enabled directory infrastructure
+- Build authentication, provisioning, or directory synchronization services in Node.js
+- Adopt a native LDAP backend without rewriting application-level LDAP flows
+
+## At a glance
+
+`ldap-native` combines three concerns in one package:
 
 1. compatibility-oriented package exports for `ldapts` consumers
 2. a Node-API addon that calls OpenLDAP directly
 3. CI/release automation for cross-platform source builds and staged prebuild distribution
 
-## What this package is trying to do
+## Feature goals
 
 - keep the familiar `ldapts` `Client` API shape
 - replace the TypeScript socket/BER transport with OpenLDAP `libldap`
@@ -16,6 +49,17 @@ A `ldapts`-compatible Node.js LDAP client backed by OpenLDAP `libldap`, with SAS
 - preserve common helper exports for controls, filters, BER, DN, and postal address helpers
 - validate migration-relevant behavior against upstream `ldapts` tests
 - prepare the package for multi-platform prebuild publication
+
+## Package positioning
+
+| Topic | `ldap-native` position |
+| --- | --- |
+| Node.js LDAP client | Native addon backed by OpenLDAP `libldap` |
+| `ldapts` migration | Public `Client` API intentionally stays close to upstream |
+| `ldapjs` migration | Promise-based destination with explicit migration guidance |
+| Enterprise auth | SASL / Kerberos / GSSAPI entry points included |
+| Distribution model | CommonJS + ESM + generated `.d.ts` output |
+| Infrastructure fit | Designed for server-side directory access, IAM, auth, and sync workloads |
 
 ## Current status
 
@@ -46,6 +90,15 @@ Compatibility evidence now includes:
 
 See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the exact boundary between direct upstream execution and client parity coverage.
 
+## Migration paths
+
+- Migrating from `ldapts`: low-friction package replacement in the common case
+- Migrating from `ldapjs`: callback/event-driven code usually needs explicit `async/await` and result-shape updates
+
+Start with:
+
+- [Migration guide: `ldapjs` / `ldapts` to `ldap-native`](docs/MIGRATION.md)
+
 ## Important limits and non-goals
 
 This repository targets **migration-friendly compatibility with the public `ldapts` API**, not a byte-for-byte recreation of the original internal transport layer.
@@ -56,7 +109,7 @@ Current boundaries to keep in mind:
 - some parity work intentionally excludes private socket/BER pipeline assertions from upstream `Client.test.ts`
 - the current native addon uses synchronous `libldap` calls behind Promise-based JavaScript methods; production hardening should move blocking LDAP work into async workers
 
-## Install
+## Native install details
 
 `ldap-native` does not need an OpenLDAP server process on the local machine. Linux and macOS source builds rely on OpenLDAP client libraries (`libldap`, `liblber`) and Cyrus SASL; Windows source builds use the system `Wldap32` SDK via MSVC.
 
@@ -261,13 +314,13 @@ For API-compatibility CI, the repository also supports `LDAP_NATIVE_USE_MOCK=1`,
 ## Documentation map
 
 - [Repository layout](docs/REPOSITORY_LAYOUT.md)
+- [Migration guide](docs/MIGRATION.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Build notes](docs/BUILD.md)
 - [Compatibility matrix](docs/COMPATIBILITY.md)
 - [Kerberos notes](docs/KERBEROS.md)
 - [Testing](docs/TESTING.md)
 - [Prebuild strategy](docs/PREBUILDS.md)
-- [npm publish](docs/NPM_PUBLISH.md)
 
 A useful reading order for new contributors is:
 
@@ -283,4 +336,4 @@ The repository includes two GitHub Actions workflows:
 - `ci.yml` — API compatibility tests on Linux/macOS/Windows, plus native builds and smoke tests on supported platforms
 - `release.yml` — multi-platform prebuild collection and npm publish on `v*` tags
 
-For npm publish, the recommended setup is **npm Trusted Publishing** with GitHub Actions OIDC. See [docs/NPM_PUBLISH.md](docs/NPM_PUBLISH.md).
+For release automation details, inspect [.github/workflows/release.yml](.github/workflows/release.yml).
