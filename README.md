@@ -303,6 +303,45 @@ TLS, npm package usage, and `ldapsearch` comparison, see:
 - [docs/wiki/KERBEROS_TLS_GSSAPI_EXAMPLE.md](docs/wiki/KERBEROS_TLS_GSSAPI_EXAMPLE.md)
 - [docs/GSSAPI_DOCKER.md](docs/GSSAPI_DOCKER.md)
 
+On Windows, `GSSAPI` uses the native Wldap32 SSPI/Negotiate path instead of
+Cyrus SASL. If `user` and `password` are omitted, the current Windows logon
+credentials are used:
+
+```js
+const client = new Client({
+  url: 'ldap://ad01.example.com:389',
+  sasl: { mechanism: 'GSSAPI' },
+});
+
+await client.startTLS();
+await client.saslBind();
+```
+
+For explicit Windows credentials, pass `domain` or `realm` with the account:
+
+```js
+await client.saslBind({
+  mechanism: 'GSSAPI',
+  user: 'svc_ldap',
+  password: process.env.LDAP_GSSAPI_PASSWORD,
+  domain: 'EXAMPLE',
+});
+```
+
+The Windows verification entry point is:
+
+```powershell
+$env:LDAP_URL = 'ldap://ad01.example.com:389'
+$env:LDAP_BASE_DN = 'dc=example,dc=com'
+$env:LDAP_GSSAPI_USER = 'svc_ldap'
+$env:LDAP_GSSAPI_PASSWORD = 'secret'
+$env:LDAP_GSSAPI_DOMAIN = 'EXAMPLE'
+npm run test:gssapi:windows
+```
+
+That command runs the Windows example and the gated integration test at
+`tests/integration/windows-gssapi.integration.test.cjs`.
+
 ### Advanced SASL bind
 
 ```js

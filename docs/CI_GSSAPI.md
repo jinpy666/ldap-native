@@ -12,16 +12,23 @@
 4. 抓取 LDAP 流量并上传 `.pcap`
 5. 上传 `ldapsearch`、`ldap-native` 输出和摘要报告
 
+Windows job 会单独验证 `ldap-native` 的 Wldap32 SSPI/Negotiate 路径。Windows
+没有仓库内的 `ldapsearch -Y GSSAPI` 对照项，所以该 job 的目标是确认 native
+addon 可以通过 `client.saslBind({ mechanism: 'GSSAPI' })` 完成真实 LDAP bind。
+
 ## CI Job
 
 对应 workflow 中的 job：
 
 - `.github/workflows/ci.yml`
 - job 名称：`gssapi-linux`
+- job 名称：`gssapi-windows`
 
 该 job 只有在相关 secrets 已配置时才会运行。
 
 ## 必需 secrets
+
+### Linux
 
 至少需要：
 
@@ -49,6 +56,29 @@ KRB5_KEYTAB_B64
 
 - `KRB5_KEYTAB_B64` 是 keytab 文件内容的 base64 编码
 - CI 会在运行时自动解码成临时文件
+
+### Windows
+
+Windows GSSAPI job 至少需要：
+
+```text
+LDAP_URL
+LDAP_BASE_DN
+LDAP_GSSAPI_WINDOWS_USER
+LDAP_GSSAPI_WINDOWS_PASSWORD
+```
+
+可选：
+
+```text
+LDAP_GSSAPI_WINDOWS_DOMAIN
+LDAP_GSSAPI_WINDOWS_REALM
+LDAP_STARTTLS
+```
+
+Windows backend 使用 SSPI/Negotiate；如果本地手动运行时省略用户和密码，会使用
+当前 Windows 登录凭据。CI runner 通常没有域登录上下文，因此 CI 推荐显式提供
+`LDAP_GSSAPI_WINDOWS_USER` / `LDAP_GSSAPI_WINDOWS_PASSWORD`。
 
 ## 可选 secrets
 
@@ -145,6 +175,9 @@ CI 会上传 artifact：
 - `artifacts/gssapi/summary.env`
 - `artifacts/gssapi/REPORT.md`
 - `artifacts/gssapi/tshark-ldap.txt` 如果 runner 上 `tshark` 可用
+- `artifacts/gssapi-windows/ldap-native-windows.out`
+- `artifacts/gssapi-windows/windows-gssapi-test.out`
+- `artifacts/gssapi-windows/REPORT.md`
 
 ## 判定标准
 

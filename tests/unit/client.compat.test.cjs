@@ -7,6 +7,19 @@ const assert = require('node:assert/strict');
 const { Client, PagedResultsControl, ServerSideSortingRequestControl } = require('../../index.cjs');
 const mockNative = require('../../src/mock-native.cjs');
 
+async function withPlatform(platform, fn) {
+  const descriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', {
+    ...descriptor,
+    value: platform,
+  });
+  try {
+    return await fn();
+  } finally {
+    Object.defineProperty(process, 'platform', descriptor);
+  }
+}
+
 test('Client simple bind + search + unbind', async () => {
   const client = new Client({ url: 'ldap://127.0.0.1:389' });
   await client.bind('cn=admin,dc=example,dc=com', 'secret');
@@ -72,6 +85,37 @@ test('Client saslBind accepts napi-ldap style aliases', async () => {
     controls: [],
   });
   await client.unbind();
+});
+
+test('Client forwards Windows GSSAPI domain credentials', async () => {
+  const client = new Client({ url: 'ldap://127.0.0.1:389' });
+  await client.saslBind({
+    mechanism: 'GSSAPI',
+    user: 'svc_ldap',
+    password: 'secret',
+    domain: 'EXAMPLE',
+  });
+  const state = mockNative.__getState(client.nativeHandle);
+  assert.deepEqual(state.bind, {
+    type: 'sasl',
+    mechanism: 'GSSAPI',
+    user: 'svc_ldap',
+    password: 'secret',
+    domain: 'EXAMPLE',
+    controls: [],
+  });
+  await client.unbind();
+});
+
+test('Client prepares parsed Windows LDAP connection options', async () => {
+  await withPlatform('win32', async () => {
+    const client = new Client({ url: 'ldaps://dc01.example.com' });
+    const state = mockNative.__getState(client.nativeHandle);
+    assert.equal(state.options.host, 'dc01.example.com');
+    assert.equal(state.options.port, 636);
+    assert.equal(state.options.secure, true);
+    await client.unbind();
+  });
 });
 
 test('Client bind shorthand reuses configured SASL defaults', async () => {

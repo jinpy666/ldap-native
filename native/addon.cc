@@ -8,6 +8,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <sspi.h>
 #include <wincrypt.h>
 #include <winldap.h>
 
@@ -68,6 +69,23 @@ bool SetLdapOption(LDAP* ld, int option, const void* invalue) {
 
 PSTR MutableCString(const std::string& value) {
   return const_cast<PSTR>(value.c_str());
+}
+
+std::string ToUpperCopy(const std::string& value) {
+  std::string upper = value;
+  std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char ch) {
+    return static_cast<char>(std::toupper(ch));
+  });
+  return upper;
+}
+
+bool IsWindowsSspiMechanism(const std::string& mechanism) {
+  std::string normalized = ToUpperCopy(mechanism);
+  return normalized == "GSSAPI" || normalized == "GSS-SPNEGO" || normalized == "NEGOTIATE" || normalized == "SSPI";
+}
+
+bool IsWindowsNtlmMechanism(const std::string& mechanism) {
+  return ToUpperCopy(mechanism) == "NTLM";
 }
 
 const char* PagedResultsControlOid() {
@@ -613,6 +631,54 @@ Napi::Value BindSasl(const Napi::CallbackInfo& info) {
     cred.bv_len = credStorage.size();
     credPtr = &cred;
   }
+
+#ifdef _WIN32
+  if (IsWindowsSspiMechanism(mechanism) || IsWindowsNtlmMechanism(mechanism)) {
+    std::string user = ReadOptionalUtf8String(payload, "user");
+    std::string domain = ReadOptionalUtf8String(payload, "domain");
+    if (domain.empty()) {
+      domain = ReadOptionalUtf8String(payload, "realm");
+    }
+
+    std::string password = ReadOptionalUtf8String(payload, "password");
+    if (password.empty() && !user.empty() && !credStorage.empty()) {
+      password = credStorage;
+    }
+
+    PCHAR cred = nullptr;
+    SEC_WINNT_AUTH_IDENTITY_A identity{};
+
+    if (!user.empty() || !password.empty() || !domain.empty()) {
+      if (user.empty() || password.empty()) {
+        throw MakeOptionError(env, "Windows GSSAPI/SSPI bind requires both sasl.user and sasl.password when explicit credentials are provided");
+      }
+
+      std::size_t slash = user.find('\\');
+      if (domain.empty() && slash != std::string::npos) {
+        domain = user.substr(0, slash);
+        user = user.substr(slash + 1);
+      }
+
+      identity.User = reinterpret_cast<unsigned char*>(const_cast<char*>(user.c_str()));
+      identity.UserLength = static_cast<unsigned long>(user.size());
+      identity.Domain = domain.empty() ? nullptr : reinterpret_cast<unsigned char*>(const_cast<char*>(domain.c_str()));
+      identity.DomainLength = static_cast<unsigned long>(domain.size());
+      identity.Password = reinterpret_cast<unsigned char*>(const_cast<char*>(password.c_str()));
+      identity.PasswordLength = static_cast<unsigned long>(password.size());
+      identity.Flags = SEC_WINNT_AUTH_IDENTITY_ANSI;
+      cred = reinterpret_cast<PCHAR>(&identity);
+    } else if (credPtr != nullptr) {
+      throw MakeOptionError(env, "Windows GSSAPI/SSPI bind does not accept raw SASL credentials; use the current Windows logon or pass sasl.user/sasl.password/sasl.domain");
+    }
+
+    ULONG method = IsWindowsNtlmMechanism(mechanism) ? LDAP_AUTH_NTLM : LDAP_AUTH_NEGOTIATE;
+    int rc = static_cast<int>(ldap_bind_s(handle->ld, nullptr, cred, method));
+    if (rc != LDAP_SUCCESS) {
+      throw MakeLdapError(env, rc, "Windows SSPI bind failed");
+    }
+    return env.Undefined();
+  }
+#endif
 
 #ifndef _WIN32
   SaslDefaults defaults{

@@ -41,6 +41,7 @@ export interface SaslOptions {
   credential?: string | Buffer;
   user?: string;
   password?: string;
+  domain?: string;
   realm?: string;
   proxyUser?: string;
   securityProperties?: string;

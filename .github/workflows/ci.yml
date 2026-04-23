@@ -182,6 +182,52 @@ jobs:
           name: gssapi-linux-artifacts
           path: artifacts/gssapi/
 
+  gssapi-windows:
+    runs-on: windows-latest
+    env:
+      LDAP_URL: ${{ secrets.LDAP_URL }}
+      LDAP_BASE_DN: ${{ secrets.LDAP_BASE_DN }}
+      LDAP_STARTTLS: ${{ secrets.LDAP_STARTTLS || '1' }}
+      LDAP_GSSAPI_USER: ${{ secrets.LDAP_GSSAPI_WINDOWS_USER }}
+      LDAP_GSSAPI_PASSWORD: ${{ secrets.LDAP_GSSAPI_WINDOWS_PASSWORD }}
+      LDAP_GSSAPI_DOMAIN: ${{ secrets.LDAP_GSSAPI_WINDOWS_DOMAIN }}
+      LDAP_GSSAPI_REALM: ${{ secrets.LDAP_GSSAPI_WINDOWS_REALM }}
+      GSSAPI_WINDOWS_ARTIFACT_DIR: ${{ github.workspace }}/artifacts/gssapi-windows
+    steps:
+      - id: gssapi-windows-config
+        shell: pwsh
+        run: |
+          $enabled = 'true'
+          if ([string]::IsNullOrWhiteSpace($env:LDAP_URL) -or [string]::IsNullOrWhiteSpace($env:LDAP_BASE_DN)) {
+            $enabled = 'false'
+          }
+          if ([string]::IsNullOrWhiteSpace($env:LDAP_GSSAPI_USER) -or [string]::IsNullOrWhiteSpace($env:LDAP_GSSAPI_PASSWORD)) {
+            $enabled = 'false'
+          }
+          "enabled=$enabled" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+      - uses: actions/checkout@v4
+        if: steps.gssapi-windows-config.outputs.enabled == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.gssapi-windows-config.outputs.enabled == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.gssapi-windows-config.outputs.enabled == 'true'
+        run: npm install --ignore-scripts
+      - if: steps.gssapi-windows-config.outputs.enabled == 'true'
+        run: npm run build:native
+      - if: steps.gssapi-windows-config.outputs.enabled == 'true'
+        shell: pwsh
+        run: ./scripts/verify-gssapi-windows.ps1
+      - if: steps.gssapi-windows-config.outputs.enabled != 'true'
+        shell: pwsh
+        run: Write-Host 'Skipping gssapi-windows because required secrets are not configured.'
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gssapi-windows-artifacts
+          path: artifacts/gssapi-windows/
+
   gssapi-docker-lab-linux:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_gssapi_docker_lab }}
     runs-on: ubuntu-latest
