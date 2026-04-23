@@ -215,6 +215,33 @@ const { searchEntries } = await client.search('dc=example,dc=com', {
 await client.unbind();
 ```
 
+LDAP attributes are multi-valued by design, so search attributes are returned
+as arrays even when your directory currently stores only one value. If your
+application wants scalar values for known single-value fields, opt in per
+search:
+
+```js
+const { searchEntries } = await client.search('dc=example,dc=com', {
+  filter: '(uid=jdoe)',
+  attributes: ['cn', 'uid', 'mail', 'memberOf'],
+  singleValueAttributes: ['cn', 'uid', 'mail'],
+  trimAttributeValues: ['cn', 'uid', 'mail'],
+});
+
+console.log(searchEntries[0].mail); // 'jdoe@example.com'
+console.log(searchEntries[0].memberOf); // still an array
+```
+
+`singleValueAttributes: true` is also supported and flattens any returned
+attribute that has exactly one value. Prefer the explicit list for production
+code because attributes such as `memberOf`, `objectClass`, `proxyAddresses`,
+and `servicePrincipalName` can be legitimately multi-valued even when a
+particular entry currently has one value.
+
+`trimAttributeValues` follows the same shape: pass an attribute list to trim
+only known text fields, or `true` to trim every returned string value. Buffers
+are left unchanged.
+
 ### Kerberos / GSSAPI
 
 ```js

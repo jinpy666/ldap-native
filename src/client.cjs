@@ -232,6 +232,52 @@ function toSearchResult(result) {
   };
 }
 
+function shouldFlattenAttribute(attribute, value, options) {
+  const mode = options?.singleValueAttributes;
+  if (!matchesAttributeOption(attribute, mode) || attribute === 'dn' || !Array.isArray(value) || value.length !== 1) {
+    return false;
+  }
+
+  return true;
+}
+
+function matchesAttributeOption(attribute, mode) {
+  if (!mode) return false;
+  if (mode === true) return true;
+  if (!Array.isArray(mode)) return false;
+
+  const normalized = attribute.toLowerCase();
+  return mode.some((candidate) => String(candidate).toLowerCase() === normalized);
+}
+
+function trimSearchValue(value) {
+  if (typeof value === 'string') return value.trim();
+  if (Array.isArray(value)) return value.map(trimSearchValue);
+  return value;
+}
+
+function applySingleValueAttributes(entries, options) {
+  if (!options?.singleValueAttributes && !options?.trimAttributeValues) return entries;
+
+  return entries.map((entry) => {
+    const normalized = {};
+    for (const [attribute, value] of Object.entries(entry)) {
+      const flattened = shouldFlattenAttribute(attribute, value, options) ? value[0] : value;
+      normalized[attribute] = matchesAttributeOption(attribute, options?.trimAttributeValues)
+        ? trimSearchValue(flattened)
+        : flattened;
+    }
+    return normalized;
+  });
+}
+
+function toSearchResultWithOptions(result, options) {
+  return {
+    searchEntries: applySingleValueAttributes(result.entries ?? [], options),
+    searchReferences: result.references ?? [],
+  };
+}
+
 class Client {
   constructor(options = {}) {
     if (!options.url) throw new Error('url is required');
@@ -306,7 +352,7 @@ class Client {
 
       do {
         const page = await runSearch(this.nativeHandle, baseDN, buildPagedSearchOptions(options, cookie), encodedControls);
-        result.searchEntries.push(...(page.entries ?? []));
+        result.searchEntries.push(...applySingleValueAttributes(page.entries ?? [], options));
         result.searchReferences.push(...(page.references ?? []));
         cookie = page.cookie ?? Buffer.alloc(0);
       } while (cookie.length > 0);
@@ -315,7 +361,7 @@ class Client {
     }
 
     const result = await runSearch(this.nativeHandle, baseDN, toNativeSearchOptions(options), encodedControls);
-    return toSearchResult(result);
+    return toSearchResultWithOptions(result, options);
   }
 
   async *searchPaginated(baseDN, options = {}, controls) {
@@ -324,7 +370,7 @@ class Client {
 
     do {
       const page = await runSearch(this.nativeHandle, baseDN, buildPagedSearchOptions(options, cookie), encodedControls);
-      yield toSearchResult(page);
+      yield toSearchResultWithOptions(page, options);
       cookie = page.cookie ?? Buffer.alloc(0);
     } while (cookie.length > 0);
   }

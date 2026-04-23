@@ -19,6 +19,8 @@ export interface SearchOptions {
   returnAttributeValues?: boolean;
   attributes?: string[];
   explicitBufferAttributes?: string[];
+  singleValueAttributes?: boolean | string[];
+  trimAttributeValues?: boolean | string[];
   sizeLimit?: number;
   timeLimit?: number;
   paged?: boolean | SearchPageOptions;
@@ -26,7 +28,7 @@ export interface SearchOptions {
 
 export interface SearchEntryObject {
   dn: string;
-  [attribute: string]: string | Array<string | Buffer>;
+  [attribute: string]: string | Buffer | Array<string | Buffer>;
 }
 
 export interface SearchResult {

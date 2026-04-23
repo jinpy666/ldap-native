@@ -61,6 +61,12 @@ function connect(options) {
         cn: ['John Doe'],
         uid: ['jdoe'],
         mail: ['jdoe@example.com'],
+        displayName: [' John Doe '],
+        entryLabel: '  Primary User  ',
+        memberOf: [
+          ' cn=dev,ou=groups,dc=example,dc=com ',
+          ' cn=ops,ou=groups,dc=example,dc=com ',
+        ],
         jpegPhoto: [Buffer.from([0x00, 0xff, 0x01])],
       },
       {

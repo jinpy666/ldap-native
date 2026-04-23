@@ -116,6 +116,89 @@ test('Client searchPaginated yields multiple pages', async () => {
   await client.unbind();
 });
 
+test('Client search can flatten explicitly selected single-value attributes', async () => {
+  const client = new Client({ url: 'ldap://127.0.0.1:389' });
+  const result = await client.search('dc=example,dc=com', {
+    filter: '(uid=jdoe)',
+    attributes: ['cn', 'uid', 'mail'],
+    singleValueAttributes: ['cn', 'uid'],
+  });
+
+  const entry = result.searchEntries[0];
+  assert.equal(entry.cn, 'John Doe');
+  assert.equal(entry.uid, 'jdoe');
+  assert.deepEqual(entry.mail, ['jdoe@example.com']);
+  await client.unbind();
+});
+
+test('Client search can heuristically flatten all single-element attribute arrays', async () => {
+  const client = new Client({ url: 'ldap://127.0.0.1:389' });
+  const result = await client.search('dc=example,dc=com', {
+    filter: '(uid=jdoe)',
+    singleValueAttributes: true,
+  });
+
+  const entry = result.searchEntries[0];
+  assert.equal(entry.cn, 'John Doe');
+  assert.equal(entry.uid, 'jdoe');
+  assert.equal(entry.mail, 'jdoe@example.com');
+  assert.equal(Buffer.isBuffer(entry.jpegPhoto), true);
+  await client.unbind();
+});
+
+test('Client searchPaginated applies single-value attribute flattening to each page', async () => {
+  const client = new Client({ url: 'ldap://127.0.0.1:389' });
+  const pages = [];
+  for await (const page of client.searchPaginated('dc=example,dc=com', {
+    filter: '(objectClass=*)',
+    paged: { pageSize: 1 },
+    singleValueAttributes: ['mail'],
+  })) {
+    pages.push(page);
+  }
+
+  assert.equal(typeof pages[0].searchEntries[0].mail, 'string');
+  assert.deepEqual(pages[0].searchEntries[0].cn, ['John Doe']);
+  await client.unbind();
+});
+
+test('Client search can trim selected string attribute values after flattening', async () => {
+  const client = new Client({ url: 'ldap://127.0.0.1:389' });
+  const result = await client.search('dc=example,dc=com', {
+    filter: '(uid=jdoe)',
+    singleValueAttributes: ['displayName'],
+    trimAttributeValues: ['displayName', 'entryLabel'],
+  });
+
+  const entry = result.searchEntries[0];
+  assert.equal(entry.displayName, 'John Doe');
+  assert.equal(entry.entryLabel, 'Primary User');
+  assert.deepEqual(entry.memberOf, [
+    ' cn=dev,ou=groups,dc=example,dc=com ',
+    ' cn=ops,ou=groups,dc=example,dc=com ',
+  ]);
+  await client.unbind();
+});
+
+test('Client search can trim every returned string without mutating Buffers', async () => {
+  const client = new Client({ url: 'ldap://127.0.0.1:389' });
+  const result = await client.search('dc=example,dc=com', {
+    filter: '(uid=jdoe)',
+    singleValueAttributes: true,
+    trimAttributeValues: true,
+  });
+
+  const entry = result.searchEntries[0];
+  assert.equal(entry.displayName, 'John Doe');
+  assert.equal(entry.entryLabel, 'Primary User');
+  assert.deepEqual(entry.memberOf, [
+    'cn=dev,ou=groups,dc=example,dc=com',
+    'cn=ops,ou=groups,dc=example,dc=com',
+  ]);
+  assert.equal(Buffer.isBuffer(entry.jpegPhoto), true);
+  await client.unbind();
+});
+
 test('Client encodes controls for high-value compatibility cases', async () => {
   const client = new Client({ url: 'ldap://127.0.0.1:389' });
   const controls = [
