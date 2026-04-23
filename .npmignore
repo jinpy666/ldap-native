@@ -4,13 +4,10 @@ types/*.js
 types/*.d.ts.map
 upstream/
 tests/
-scripts/
-docs/
-examples/
 .omc/
 .claude/
 .github/
-docker/
+docker/openldap/
 docker-compose.yml
 build/
 node_modules/

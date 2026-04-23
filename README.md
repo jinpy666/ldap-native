@@ -234,14 +234,45 @@ console.log(Buffer.isBuffer(whoami.value) ? whoami.value.toString('utf8') : whoa
 await client.unbind();
 ```
 
-`bind('GSSAPI')` remains available as a migration-friendly shorthand. Use
-`saslBind()` when you want behavior closer to `ldapsearch -Y GSSAPI` or need
-to pass SASL-specific defaults such as auth name, realm, proxy user, or
-security properties.
+`bind('GSSAPI')` remains available as a migration-friendly shorthand. New code
+should prefer `saslBind()` because it maps directly to the multi-step OpenLDAP
+SASL flow used by `ldapsearch -Y GSSAPI`.
+
+Kerberos credentials are acquired before the LDAP bind, usually with `kinit`:
+
+```bash
+export LDAP_URL='ldap://ad01.example.com:389'
+export LDAP_BASE_DN='dc=example,dc=com'
+export LDAP_CA_FILE='/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem'
+export LDAP_STARTTLS=1
+
+export KRB5_CONFIG='/etc/krb5.conf'
+export KRB5CCNAME="FILE:/tmp/krb5cc_$(id -u)"
+export KRB5_PRINCIPAL='svc_ldap@EXAMPLE.COM'
+export KRB5_PASSWORD='YourStrongPassword'
+
+printf '%s\n' "$KRB5_PASSWORD" | kinit "$KRB5_PRINCIPAL"
+node node_modules/ldap-native/examples/gssapi-rhel9.cjs
+```
+
+For service workloads, use `KRB5_KEYTAB` instead of `KRB5_PASSWORD`:
+
+```bash
+export KRB5_PRINCIPAL='svc_ldap@EXAMPLE.COM'
+export KRB5_KEYTAB='/etc/security/keytabs/svc_ldap.keytab'
+node node_modules/ldap-native/examples/gssapi-rhel9.cjs
+```
+
+If `ldapsearch` works but a Node client appears to send only the literal
+`GSSAPI` mechanism name in step 1, the bind flow is wrong. `ldap-native` uses
+OpenLDAP's multi-round interactive SASL bind path so the first request can carry
+the generated GSSAPI credential token, matching the mature `ldapsearch` /
+OpenLDAP behavior.
 
 For a RHEL 9 oriented end-to-end example including Kerberos ticket acquisition,
-TLS, and `ldapsearch` comparison, see:
+TLS, npm package usage, and `ldapsearch` comparison, see:
 
+- [docs/GSSAPI_NPM_USAGE.md](docs/GSSAPI_NPM_USAGE.md)
 - [docs/wiki/KERBEROS_TLS_GSSAPI_EXAMPLE.md](docs/wiki/KERBEROS_TLS_GSSAPI_EXAMPLE.md)
 - [docs/GSSAPI_DOCKER.md](docs/GSSAPI_DOCKER.md)
 
@@ -351,6 +382,7 @@ For API-compatibility CI, the repository also supports `LDAP_NATIVE_USE_MOCK=1`,
 - [Architecture](docs/ARCHITECTURE.md)
 - [Build notes](docs/BUILD.md)
 - [Compatibility matrix](docs/COMPATIBILITY.md)
+- [GSSAPI / Kerberos / TLS npm usage](docs/GSSAPI_NPM_USAGE.md)
 - [Kerberos notes](docs/KERBEROS.md)
 - [Testing](docs/TESTING.md)
 - [Prebuild strategy](docs/PREBUILDS.md)

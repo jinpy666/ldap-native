@@ -1,6 +1,6 @@
 {
   "name": "ldap-native",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Native Node.js LDAP client for OpenLDAP and Active Directory, ldapts-compatible with SASL/Kerberos/GSSAPI support",
   "license": "MIT",
   "type": "commonjs",
@@ -42,11 +42,16 @@
   "files": [
     "*.cjs",
     "*.mjs",
+    "docs",
+    "examples",
     "scripts/*.cjs",
+    "scripts/*.sh",
     "src/*.cjs",
     "types",
     "prebuilds",
     "binding.gyp",
+    "docker/gssapi",
+    "docker-compose.gssapi.yml",
     "native",
     "index.d.ts"
   ],
