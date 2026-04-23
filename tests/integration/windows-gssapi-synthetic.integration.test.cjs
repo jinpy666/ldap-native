@@ -127,6 +127,9 @@ function makeSpnegoChallenge(ntlmChallenge) {
 async function startSyntheticLdapServer() {
   const requests = [];
   const server = net.createServer((socket) => {
+    socket.on('error', () => {
+      // Wldap32 may reset the synthetic connection after the bind probe.
+    });
     socket.on('data', (chunk) => {
       requests.push(chunk);
       const messageId = parseMessageId(chunk);
