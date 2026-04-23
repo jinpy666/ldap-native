@@ -133,6 +133,36 @@ If you want packet capture for first-bind comparison:
 LDAP_CAPTURE=1 bash scripts/verify-gssapi-rhel9.sh
 ```
 
+For Windows GSSAPI, use the Wldap32 SSPI/Negotiate verification path. It uses
+the current Windows logon if `LDAP_GSSAPI_USER` and `LDAP_GSSAPI_PASSWORD` are
+omitted:
+
+```powershell
+$env:LDAP_URL = 'ldap://ad01.example.com:389'
+$env:LDAP_BASE_DN = 'dc=example,dc=com'
+$env:LDAP_GSSAPI_USER = 'svc_ldap'
+$env:LDAP_GSSAPI_PASSWORD = 'secret'
+$env:LDAP_GSSAPI_DOMAIN = 'EXAMPLE'
+npm run test:gssapi:windows
+```
+
+The script runs both `examples/gssapi-windows.cjs` and
+`tests/integration/windows-gssapi.integration.test.cjs`. The integration test
+is skipped unless it is running on Windows with `LDAP_GSSAPI_WINDOWS=1`.
+
+Without a Windows LDAP / Kerberos environment, you can still exercise the
+Windows native Wldap32 SSPI/Negotiate bind path with the synthetic fixture:
+
+```powershell
+$env:LDAP_GSSAPI_WINDOWS_SYNTHETIC = '1'
+npm run test:gssapi:windows:synthetic
+```
+
+This starts a local LDAP fixture and drives
+`client.saslBind({ mechanism: 'GSSAPI' })` through the Windows native addon. It
+does not validate a real KDC / AD exchange; use `npm run test:gssapi:windows`
+with LDAP credentials for that.
+
 If you do not have an existing LDAP / Kerberos environment, you can boot the
 self-contained Docker lab instead:
 
@@ -188,6 +218,24 @@ When those secrets are present, CI runs `scripts/run-gssapi-ci.sh`, which:
 - runs `ldap-native` via `client.saslBind()`
 - captures traffic to a `.pcap`
 - uploads logs and capture artifacts for inspection
+
+There is also an optional Windows GSSAPI job. It runs when these additional
+secrets are configured:
+
+```bash
+LDAP_GSSAPI_WINDOWS_USER
+LDAP_GSSAPI_WINDOWS_PASSWORD
+```
+
+`LDAP_GSSAPI_WINDOWS_DOMAIN` and `LDAP_GSSAPI_WINDOWS_REALM` are optional. The
+job builds the native Windows addon and runs `scripts/verify-gssapi-windows.ps1`,
+which exercises `client.saslBind({ mechanism: 'GSSAPI' })` through
+SSPI/Negotiate and uploads both the example output and test output.
+
+If those Windows secrets are not configured, the same job still builds the
+native Windows addon and runs `npm run test:gssapi:windows:synthetic`, which
+covers the Wldap32 SSPI/Negotiate bind path against a local synthetic LDAP
+fixture without external credentials.
 
 For the full GitHub Actions secret setup checklist, see [CI_GSSAPI.md](./CI_GSSAPI.md).
 

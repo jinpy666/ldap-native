@@ -197,6 +197,7 @@ function normalizeSaslOptions(saslOptions = {}, mechanism, credential) {
   if (merged.credential != null) normalized.credential = merged.credential;
   if (merged.user != null) normalized.user = String(merged.user);
   if (merged.password != null) normalized.password = String(merged.password);
+  if (merged.domain != null) normalized.domain = String(merged.domain);
   if (merged.realm != null) normalized.realm = String(merged.realm);
   if (merged.proxyUser != null) normalized.proxyUser = String(merged.proxyUser);
   if (merged.proxyuser != null && normalized.proxyUser == null) normalized.proxyUser = String(merged.proxyuser);
