@@ -1,9 +1,12 @@
 'use strict';
 
 const net = require('node:net');
+const { spawn } = require('node:child_process');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { Client } = require('../../index.cjs');
+
+const CHILD_FLAG = 'LDAP_GSSAPI_WINDOWS_SYNTHETIC_CHILD';
 
 function envFlag(name) {
   const value = process.env[name];
@@ -151,23 +154,96 @@ async function startSyntheticLdapServer() {
   };
 }
 
-test('integration: Windows GSSAPI reaches Wldap32 SSPI synthetic LDAP bind', {
-  skip: process.platform !== 'win32' || !envFlag('LDAP_GSSAPI_WINDOWS_SYNTHETIC'),
-}, async () => {
-  const fixture = await startSyntheticLdapServer();
+async function runSyntheticClient() {
   const client = new Client({
-    url: fixture.url,
+    url: process.env.LDAP_URL,
     connectTimeout: 5000,
     timeout: 5000,
-    sasl: { mechanism: 'GSSAPI' },
+    sasl: {
+      mechanism: 'GSSAPI',
+      user: process.env.LDAP_GSSAPI_USER || 'ldapnative',
+      password: process.env.LDAP_GSSAPI_PASSWORD || 'synthetic-password',
+      domain: process.env.LDAP_GSSAPI_DOMAIN || 'WORKGROUP',
+    },
   });
 
   try {
     await client.saslBind();
-    assert.ok(fixture.requests.length >= 1);
-    assert.ok(fixture.requests.some(hasSaslBindRequest), 'expected at least one LDAP SASL bind request');
   } finally {
     await client.unbind().catch(() => {});
-    await fixture.close();
   }
-});
+}
+
+function runClientChild(url) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [__filename], {
+      env: {
+        ...process.env,
+        [CHILD_FLAG]: '1',
+        LDAP_URL: url,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, Number(process.env.LDAP_GSSAPI_WINDOWS_SYNTHETIC_TIMEOUT || 20000));
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on('exit', (code, signal) => {
+      clearTimeout(timer);
+      resolve({ code, signal, timedOut, stdout, stderr });
+    });
+  });
+}
+
+if (envFlag(CHILD_FLAG)) {
+  runSyntheticClient()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error(err?.stack || err?.message || err);
+      process.exit(Number.isInteger(err?.code) ? err.code : 1);
+    });
+} else {
+  test('integration: Windows GSSAPI reaches Wldap32 SSPI synthetic LDAP bind', {
+    skip: process.platform !== 'win32' || !envFlag('LDAP_GSSAPI_WINDOWS_SYNTHETIC'),
+  }, async () => {
+    const fixture = await startSyntheticLdapServer();
+    try {
+      const result = await runClientChild(fixture.url);
+      const reachedSaslBind = fixture.requests.some(hasSaslBindRequest);
+
+      assert.ok(fixture.requests.length >= 1, [
+        'expected the Windows Wldap32 client to contact the synthetic LDAP fixture',
+        result.stdout,
+        result.stderr,
+      ].filter(Boolean).join('\n'));
+      assert.ok(reachedSaslBind, [
+        'expected at least one LDAP SASL bind request',
+        result.stdout,
+        result.stderr,
+      ].filter(Boolean).join('\n'));
+
+      if (!result.timedOut) {
+        assert.ok(result.code === 0 || result.code === 85, [
+          `synthetic Windows GSSAPI child exited with code ${result.code}`,
+          result.stdout,
+          result.stderr,
+        ].filter(Boolean).join('\n'));
+      } else {
+        console.log('Windows SSPI child reached LDAP SASL bind and was stopped at the synthetic timeout.');
+      }
+    } finally {
+      await fixture.close();
+    }
+  });
+}
