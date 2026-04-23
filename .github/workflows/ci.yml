@@ -206,22 +206,34 @@ jobs:
           }
           "enabled=$enabled" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
       - uses: actions/checkout@v4
-        if: steps.gssapi-windows-config.outputs.enabled == 'true'
       - uses: actions/setup-node@v4
-        if: steps.gssapi-windows-config.outputs.enabled == 'true'
         with:
           node-version: 22
           cache: npm
-      - if: steps.gssapi-windows-config.outputs.enabled == 'true'
-        run: npm install --ignore-scripts
-      - if: steps.gssapi-windows-config.outputs.enabled == 'true'
-        run: npm run build:native
+      - run: npm install --ignore-scripts
+      - run: npm run build:native
       - if: steps.gssapi-windows-config.outputs.enabled == 'true'
         shell: pwsh
         run: ./scripts/verify-gssapi-windows.ps1
       - if: steps.gssapi-windows-config.outputs.enabled != 'true'
         shell: pwsh
-        run: Write-Host 'Skipping gssapi-windows because required secrets are not configured.'
+        env:
+          LDAP_GSSAPI_WINDOWS_SYNTHETIC: '1'
+        run: |
+          Write-Host 'Required Windows GSSAPI secrets are not configured; running synthetic Wldap32 SSPI coverage instead.'
+          New-Item -ItemType Directory -Force -Path $env:GSSAPI_WINDOWS_ARTIFACT_DIR | Out-Null
+          $log = Join-Path $env:GSSAPI_WINDOWS_ARTIFACT_DIR 'windows-gssapi-synthetic.out'
+          npm run test:gssapi:windows:synthetic 2>&1 | Tee-Object -FilePath $log
+          $exitCode = $LASTEXITCODE
+          @(
+            '# Windows GSSAPI Synthetic Report'
+            ''
+            'Mode: synthetic Wldap32 SSPI coverage without external LDAP/Kerberos secrets.'
+            "ExitCode: $exitCode"
+          ) | Set-Content -Path (Join-Path $env:GSSAPI_WINDOWS_ARTIFACT_DIR 'REPORT.md')
+          if ($exitCode -ne 0) {
+            exit $exitCode
+          }
       - if: always()
         uses: actions/upload-artifact@v4
         with:

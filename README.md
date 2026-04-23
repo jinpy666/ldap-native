@@ -342,6 +342,12 @@ npm run test:gssapi:windows
 That command runs the Windows example and the gated integration test at
 `tests/integration/windows-gssapi.integration.test.cjs`.
 
+When GitHub Actions does not have Windows LDAP / Kerberos credentials, the
+`gssapi-windows` job falls back to a self-contained synthetic LDAP fixture. That
+fallback does not prove a real KDC exchange, but it does build the Windows
+native addon and drives `client.saslBind({ mechanism: 'GSSAPI' })` through the
+Wldap32 SSPI/Negotiate code path without external secrets.
+
 ### Advanced SASL bind
 
 ```js

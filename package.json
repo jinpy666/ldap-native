@@ -78,6 +78,7 @@
     "test:integration:mockable": "node scripts/run-integration-tests.cjs",
     "test:gssapi:docker": "bash scripts/run-gssapi-docker-lab.sh",
     "test:gssapi:windows": "powershell -ExecutionPolicy Bypass -File scripts/verify-gssapi-windows.ps1",
+    "test:gssapi:windows:synthetic": "node --test tests/integration/windows-gssapi-synthetic.integration.test.cjs",
     "test:gssapi:overnight": "bash scripts/run-gssapi-overnight-demo.sh",
     "release:verify": "npm run build:compat && npm run test:unit && npm run test:imports && npm run test:upstream && npm pack --dry-run",
     "test:docker": "npm run build && npm run test:integration:docker",

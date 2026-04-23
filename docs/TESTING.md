@@ -150,6 +150,19 @@ The script runs both `examples/gssapi-windows.cjs` and
 `tests/integration/windows-gssapi.integration.test.cjs`. The integration test
 is skipped unless it is running on Windows with `LDAP_GSSAPI_WINDOWS=1`.
 
+Without a Windows LDAP / Kerberos environment, you can still exercise the
+Windows native Wldap32 SSPI/Negotiate bind path with the synthetic fixture:
+
+```powershell
+$env:LDAP_GSSAPI_WINDOWS_SYNTHETIC = '1'
+npm run test:gssapi:windows:synthetic
+```
+
+This starts a local LDAP fixture and drives
+`client.saslBind({ mechanism: 'GSSAPI' })` through the Windows native addon. It
+does not validate a real KDC / AD exchange; use `npm run test:gssapi:windows`
+with LDAP credentials for that.
+
 If you do not have an existing LDAP / Kerberos environment, you can boot the
 self-contained Docker lab instead:
 
@@ -218,6 +231,11 @@ LDAP_GSSAPI_WINDOWS_PASSWORD
 job builds the native Windows addon and runs `scripts/verify-gssapi-windows.ps1`,
 which exercises `client.saslBind({ mechanism: 'GSSAPI' })` through
 SSPI/Negotiate and uploads both the example output and test output.
+
+If those Windows secrets are not configured, the same job still builds the
+native Windows addon and runs `npm run test:gssapi:windows:synthetic`, which
+covers the Wldap32 SSPI/Negotiate bind path against a local synthetic LDAP
+fixture without external credentials.
 
 For the full GitHub Actions secret setup checklist, see [CI_GSSAPI.md](./CI_GSSAPI.md).
 

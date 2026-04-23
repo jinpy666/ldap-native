@@ -13,8 +13,11 @@
 5. 上传 `ldapsearch`、`ldap-native` 输出和摘要报告
 
 Windows job 会单独验证 `ldap-native` 的 Wldap32 SSPI/Negotiate 路径。Windows
-没有仓库内的 `ldapsearch -Y GSSAPI` 对照项，所以该 job 的目标是确认 native
-addon 可以通过 `client.saslBind({ mechanism: 'GSSAPI' })` 完成真实 LDAP bind。
+没有仓库内的 `ldapsearch -Y GSSAPI` 对照项；当提供真实 LDAP / Kerberos secrets
+时，该 job 会确认 native addon 可以通过 `client.saslBind({ mechanism: 'GSSAPI' })`
+完成真实 LDAP bind。当没有这些 secrets 时，CI 会退回到自包含的 synthetic LDAP
+fixture，覆盖 Windows native addon 的 SSPI/Negotiate 调用路径，但不声明完成了真实
+KDC / AD 验证。
 
 ## CI Job
 
@@ -24,7 +27,9 @@ addon 可以通过 `client.saslBind({ mechanism: 'GSSAPI' })` 完成真实 LDAP 
 - job 名称：`gssapi-linux`
 - job 名称：`gssapi-windows`
 
-该 job 只有在相关 secrets 已配置时才会运行。
+Linux GSSAPI job 只有在相关 secrets 已配置时才会运行。Windows GSSAPI job 始终
+构建 Windows native addon；有 secrets 时跑真实 LDAP / Kerberos bind，没有 secrets
+时跑 synthetic Wldap32 SSPI bind 覆盖。
 
 ## 必需 secrets
 
@@ -79,6 +84,16 @@ LDAP_STARTTLS
 Windows backend 使用 SSPI/Negotiate；如果本地手动运行时省略用户和密码，会使用
 当前 Windows 登录凭据。CI runner 通常没有域登录上下文，因此 CI 推荐显式提供
 `LDAP_GSSAPI_WINDOWS_USER` / `LDAP_GSSAPI_WINDOWS_PASSWORD`。
+
+如果没有配置以上 Windows secrets，GitHub Actions 会自动运行：
+
+```text
+npm run test:gssapi:windows:synthetic
+```
+
+这个 fallback 会在 Windows runner 上启动一个本地 LDAP fixture，然后调用
+`client.saslBind({ mechanism: 'GSSAPI' })`。它的价值是无凭据覆盖 Wldap32 SSPI
+native 路径；它不能替代真实 Kerberos realm / KDC / AD 互操作测试。
 
 ## 可选 secrets
 
@@ -177,6 +192,11 @@ CI 会上传 artifact：
 - `artifacts/gssapi/tshark-ldap.txt` 如果 runner 上 `tshark` 可用
 - `artifacts/gssapi-windows/ldap-native-windows.out`
 - `artifacts/gssapi-windows/windows-gssapi-test.out`
+- `artifacts/gssapi-windows/REPORT.md`
+
+无 Windows secrets 的 synthetic fallback 不会生成真实 LDAP/Kerberos 报告；它会上传：
+
+- `artifacts/gssapi-windows/windows-gssapi-synthetic.out`
 - `artifacts/gssapi-windows/REPORT.md`
 
 ## 判定标准
