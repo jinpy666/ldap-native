@@ -7,6 +7,9 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#ifndef SECURITY_WIN32
+#define SECURITY_WIN32
+#endif
 #include <windows.h>
 #include <sspi.h>
 #include <wincrypt.h>
