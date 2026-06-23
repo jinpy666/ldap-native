@@ -24,7 +24,7 @@ jobs:
     env:
       LDAP_NATIVE_USE_MOCK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
@@ -42,7 +42,7 @@ jobs:
         node: [20, 22]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
@@ -64,7 +64,7 @@ jobs:
         node: [20, 22]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
@@ -91,7 +91,7 @@ jobs:
             node: 22
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
@@ -117,7 +117,7 @@ jobs:
         node: [20, 22]
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
@@ -159,7 +159,7 @@ jobs:
             enabled=false
           fi
           echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.gssapi-config.outputs.enabled == 'true'
       - uses: actions/setup-node@v4
         if: steps.gssapi-config.outputs.enabled == 'true'
@@ -205,7 +205,7 @@ jobs:
             $enabled = 'false'
           }
           "enabled=$enabled" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -246,7 +246,7 @@ jobs:
     env:
       GSSAPI_DOCKER_ARTIFACT_DIR: ${{ github.workspace }}/artifacts/gssapi-docker
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Configure Docker userns-remap for FreeIPA
         run: |
           echo -e "dockremap:$(id -u):1\ndockremap:200001:65535" | sudo tee -a /etc/subuid
