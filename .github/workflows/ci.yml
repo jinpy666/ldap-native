@@ -25,7 +25,7 @@ jobs:
       LDAP_NATIVE_USE_MOCK: '1'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -92,7 +92,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -118,7 +118,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -161,7 +161,7 @@ jobs:
           echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         if: steps.gssapi-config.outputs.enabled == 'true'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.gssapi-config.outputs.enabled == 'true'
         with:
           node-version: 22
@@ -206,7 +206,7 @@ jobs:
           }
           "enabled=$enabled" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -253,7 +253,7 @@ jobs:
           echo -e "dockremap:$(id -g):1\ndockremap:200001:65535" | sudo tee -a /etc/subgid
           echo '{ "userns-remap": "default" }' | sudo tee /etc/docker/daemon.json
           sudo systemctl restart docker
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
