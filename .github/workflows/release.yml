@@ -125,7 +125,9 @@ jobs:
           path: release-prebuilds/
 
   prebuild-windows-x64:
-    runs-on: windows-latest
+    # Pin the runner while node-gyp does not recognize the Visual Studio 18
+    # installation currently exposed by windows-latest.
+    runs-on: windows-2022
     needs: verify-release
     steps:
       - uses: actions/checkout@v4
