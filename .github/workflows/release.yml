@@ -71,7 +71,9 @@ jobs:
           path: release-prebuilds/
 
   prebuild-macos-x64:
-    runs-on: macos-15-intel
+    # Use the larger Intel runner so Homebrew can build the unavailable
+    # macOS 15 x64 bottles without stalling the release job.
+    runs-on: macos-15-large
     needs: verify-release
     steps:
       - uses: actions/checkout@v4
