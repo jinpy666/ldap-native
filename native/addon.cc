@@ -1007,6 +1007,7 @@ Napi::Value Modify(const Napi::CallbackInfo& info) {
   std::vector<std::vector<berval*>> rawPointers;
 
   mods.reserve(changes.Length() + 1);
+  attrNames.reserve(changes.Length());
   rawValues.resize(changes.Length());
   rawPointers.resize(changes.Length());
 
